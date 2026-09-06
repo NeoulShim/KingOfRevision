@@ -1,3 +1,4 @@
+import {reviewStore,formatBytes} from './core/review-store.js';
 import {editorText} from './core/editing.js';
 import {REVIEW_PREFIX,reviewRecord,savedReviews} from './core/saved-reviews.js';
 import {paragraphPresentation} from './core/review.js';
@@ -5,6 +6,7 @@ import {choiceCounts,selectedParagraphs,validateChoices} from './core/compare.js
 const $=id=>document.getElementById(id),fmt=n=>n.toLocaleString('ko-KR');
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 let files={old:null,new:null},model=null,choices={},sceneIndex=0,full=false,font=17,query='',filter='all',expanded=new Set(),history=[],worker=null,requests=new Map(),serial=0,operation=0,toastTimer,activeChange=null,storageOK=true;
+let historyRecords=[],historyJob=0,deleteTarget=null,bodySaved=new Set();
 let editing=false,editDraftStart='';
 let resumeTarget=null,currentExample=false;
 let savedManuscript=null,returnHomeAfterExport=false,exporting=false;
@@ -19,28 +21,71 @@ function makeWorker(){if(worker)return;worker=new Worker(new URL('./worker.js',i
 function callWorker(type,payload,transfer=[]){makeWorker();return new Promise((resolve,reject)=>{const id=++serial;requests.set(id,{resolve,reject});worker.postMessage({id,type,payload},transfer)})}
 function cancel(){if(editing)return;if(exporting){operation++;exporting=false;busy(false);return}operation++;worker?.terminate();worker=null;for(const r of requests.values())r.reject(Error('작업을 취소했습니다.'));requests.clear();busy(false);model=null;showPage('use')}
 function storageKey(){return REVIEW_PREFIX+model.fingerprint}
-function saveChoices(){if(!model)return;try{const key=storageKey();let previous=null;try{previous=JSON.parse(localStorage.getItem(key))}catch{}localStorage.setItem(key,JSON.stringify(reviewRecord(model,{choices,sceneIndex,full,font,example:currentExample},previous)));storageOK=true}catch{storageOK=false}const node=$('save-label');if(node)node.textContent=storageOK?'선택 자동 저장됨':'자동 저장 공간 부족 · 선택을 백업해 주세요'}
-function loadChoices(){savedManuscript=null;returnHomeAfterExport=false;choices={};sceneIndex=Math.max(0,model.scenes.findIndex(s=>s.changes));full=false;font=17;try{const data=JSON.parse(localStorage.getItem(storageKey())||'null');if(data){choices=validateChoices(model,data.choices);sceneIndex=Number.isInteger(data.sceneIndex)?Math.max(0,Math.min(model.scenes.length-1,data.sceneIndex)):0;full=data.full===true;font=Number.isFinite(data.font)?Math.max(14,Math.min(24,data.font)):17;}}catch{choices={};sceneIndex=0}history=[];expanded.clear();activeChange=null}
+function currentReview(){return reviewRecord(model,{choices:{...choices},sceneIndex,full,font,example:currentExample})}
+function saveChoices(){
+  if(!model)return;const fp=model.fingerprint,state=currentReview();
+  try{localStorage.setItem(REVIEW_PREFIX+fp,JSON.stringify(state));storageOK=true}catch{storageOK=false}
+  const node=$('save-label');if(node)node.textContent='선택 저장 중…';
+  reviewStore.putReview(fp,state).then(()=>{if(model?.fingerprint===fp&&node)node.textContent=bodySaved.has(fp)?'원고와 선택 저장됨':'선택 저장됨'}).catch(()=>{if(model?.fingerprint===fp&&node)node.textContent=storageOK?'선택만 저장됨 · 원고는 파일로 보관해 주세요':'저장 공간 부족 · 원고를 내려받아 주세요'});
+}
+async function persistCurrent(){
+  if(!model)return;const fp=model.fingerprint,state=currentReview();
+  try{const snapshot=await callWorker('snapshot',{});if(snapshot.fingerprint!==fp)return;await reviewStore.putSession(snapshot,state);bodySaved.add(fp);if(model?.fingerprint===fp)saveChoices()}
+  catch{toast('브라우저에 원고를 보관하지 못했습니다. 저장 공간을 확인하고 원고 파일을 내려받아 주세요.')}
+}
+
+function loadChoices(record=null){savedManuscript=null;returnHomeAfterExport=false;choices={};sceneIndex=Math.max(0,model.scenes.findIndex(s=>s.changes));full=false;font=17;try{const data=record||JSON.parse(localStorage.getItem(storageKey())||'null');if(data){choices=validateChoices(model,data.choices);sceneIndex=Number.isInteger(data.sceneIndex)?Math.max(0,Math.min(model.scenes.length-1,data.sceneIndex)):0;full=data.full===true;font=Number.isFinite(data.font)?Math.max(14,Math.min(24,data.font)):17;}}catch{choices={};sceneIndex=0}history=[];expanded.clear();activeChange=null}
 function setFile(side,file){if(!file)return;if(!/\.hwpx?$/i.test(file.name)){toast('HWP 또는 HWPX 파일을 선택해 주세요.');return}if(file.size>30*1024*1024){toast('파일 하나당 30 MB까지 읽을 수 있습니다.');return}files[side]=file;updateFiles()}
 function updateFiles(){for(const side of ['old','new']){$(side+'-file-label').textContent=files[side]?files[side].name:side==='old'?'HWP / HWPX 파일을 놓거나 눌러서 선택':'수정한 HWP / HWPX 파일을 선택';$('pick-'+side).classList.toggle('ready',!!files[side]);}$('compare-btn').disabled=!(files.old&&files.new)}
-function renderSavedReviews(){
-  const list=$('saved-review-list');if(!list)return;
-  try{
-    const records=savedReviews(localStorage);
-    list.innerHTML=records.length?records.map(r=>`<article class="saved-review"><div class="saved-review-info"><h3>${esc(r.originalName)}</h3><p>개고본 · ${esc(r.revisedName)}</p><div class="saved-review-meta"><span>${r.total===null?'선택 '+r.done+'개':'검토 '+r.done+' / '+r.total}</span><span>마지막 장면 ${r.sceneIndex+1}</span><span>${r.updatedAt?esc(new Date(r.updatedAt).toLocaleString('ko-KR',{dateStyle:'short',timeStyle:'short'})):'이전 버전에서 저장한 기록'}</span></div></div><button class="secondary" data-resume-review="${esc(r.fingerprint)}">${r.example?'예제 이어서 비교':'파일 선택해 이어가기'} →</button></article>`).join(''):'<p class="saved-review-empty">아직 저장된 비교가 없습니다. 원고를 비교하면 이곳에 기록이 남습니다.</p>';
-  }catch{list.innerHTML='<p class="saved-review-empty">이 브라우저에서 비교 기록을 읽을 수 없습니다. 브라우저의 사이트 저장 설정을 확인해 주세요.</p>'}
+function paintHistory(records){
+  historyRecords=records;const list=$('saved-review-list');if(!list)return;
+  list.innerHTML=records.length?records.map(r=>`<article class="saved-review"><div class="saved-review-info"><h3>${esc(r.originalName)}</h3><p>개고본 · ${esc(r.revisedName)}</p><div class="saved-review-meta"><span>${r.total===null?'선택 '+r.done+'개':'검토 '+r.done+' / '+r.total}</span><span>마지막 장면 ${r.sceneIndex+1}</span><span>${r.updatedAt?esc(new Date(r.updatedAt).toLocaleString('ko-KR',{dateStyle:'short',timeStyle:'short'})):'이전 버전에서 저장한 기록'}</span></div></div><div class="saved-review-actions"><button class="secondary" data-resume-review="${esc(r.fingerprint)}">이어서 비교 →</button><button class="text-btn" data-delete-review="${esc(r.fingerprint)}">기록 지우기</button></div></article>`).join(''):'<p class="saved-review-empty">아직 저장된 비교가 없습니다. 원고를 비교하면 이곳에 기록이 남습니다.</p>';
 }
-function resumeReview(fingerprint){
+async function renderSavedReviews(){
+  const job=++historyJob;let legacy=[];
+  try{legacy=savedReviews(localStorage)}catch{}
+  paintHistory(legacy);
   try{
-    const record=savedReviews(localStorage).find(r=>r.fingerprint===fingerprint);
+    const rows=await reviewStore.list();if(job!==historyJob)return;
+    const map=new Map(legacy.map(r=>[r.fingerprint,r]));
+    for(const row of rows){const storage={length:1,key:()=>REVIEW_PREFIX+row.fingerprint,getItem:()=>JSON.stringify(row.review)};const r=savedReviews(storage)[0];if(r)map.set(r.fingerprint,r)}
+    paintHistory([...map.values()].sort((a,b)=>(b.updatedAt||0)-(a.updatedAt||0)));
+  }catch{if(!legacy.length)$('saved-review-list').innerHTML='<p class="saved-review-empty">원고 저장 공간을 열 수 없습니다. 브라우저의 사이트 저장 설정을 확인해 주세요.</p>'}
+  updateStorageUsage();
+}
+async function updateStorageUsage(){
+  const node=$('storage-usage');if(!node)return;
+  try{const estimate=await navigator.storage.estimate();node.textContent=`이 사이트의 저장 공간 · 약 ${formatBytes(estimate.usage)} / ${formatBytes(estimate.quota)}`;}
+  catch{node.textContent='저장 공간 한도는 브라우저가 관리합니다.'}
+}
+async function resumeReview(fingerprint){
+  if(editing||exporting)return;const job=++operation;busy(true,'저장한 비교를 열고 있습니다…');
+  try{
+    let record=historyRecords.find(r=>r.fingerprint===fingerprint);if(!record)try{record=savedReviews(localStorage).find(r=>r.fingerprint===fingerprint)}catch{}
+    let snapshot=null;try{snapshot=await reviewStore.getSession(fingerprint)}catch{}
+    if(!snapshot&&worker){try{const live=await callWorker('snapshot',{});if(live.fingerprint===fingerprint)snapshot=live}catch{}}
+    if(job!==operation)return;
+    if(snapshot){
+      const result=await callWorker('restore',{snapshot});if(job!==operation)return;
+      model=result;currentExample=record?.example===true;bodySaved.add(fingerprint);clearResume();query='';filter='all';loadChoices(snapshot.review);renderWorkspace();location.hash='use';showPage('use');saveChoices();await persistCurrent();return;
+    }
     if(!record){toast('비교 기록을 찾을 수 없습니다.');renderSavedReviews();return}
-    if(record.example){demo(fingerprint).catch(()=>{});return}
+    if(record.example){busy(false);await demo(fingerprint);return}
     resumeTarget=fingerprint;files={old:null,new:null};updateFiles();
-    $('resume-review').classList.remove('hidden');$('resume-review-label').textContent='이어갈 비교: '+record.originalName+' / '+record.revisedName;
-    $('home-status').textContent='이 기록에 사용한 원문과 개고본을 다시 선택해 주세요. 선택 기록과 마지막 장면을 복원합니다.';
+    $('resume-review').classList.remove('hidden');$('resume-review-label').textContent='이전 기록 복원: '+record.originalName+' / '+record.revisedName;
+    $('home-status').textContent='이전 버전의 기록에는 본문이 없습니다. 원문과 개고본을 한 번만 다시 선택하면 다음부터 바로 이어집니다.';
     $('pick-old').focus();window.scrollTo({top:0,behavior:'smooth'});
-  }catch{toast('비교 기록을 읽을 수 없습니다.')}
+  }catch(e){toast(e.message||'저장한 비교를 열 수 없습니다.')}
+  finally{if(job===operation)busy(false)}
 }
+function requestDelete(fingerprint){deleteTarget=fingerprint;const record=historyRecords.find(r=>r.fingerprint===fingerprint);$('delete-review-name').textContent=record?.originalName||'선택한 비교';$('delete-review-error').textContent='';$('delete-review-dialog').showModal()}
+async function deleteReview(){
+  if(!deleteTarget)return;const fp=deleteTarget;$('confirm-delete-review').disabled=true;
+  try{await reviewStore.remove(fp);localStorage.removeItem(REVIEW_PREFIX+fp);bodySaved.delete(fp);if(resumeTarget===fp)clearResume();$('delete-review-dialog').close();deleteTarget=null;await renderSavedReviews();toast('이 비교의 원고와 선택 기록을 지웠습니다.')}
+  catch{$('delete-review-error').textContent='기록을 지우지 못했습니다. 브라우저 저장 설정을 확인해 주세요.'}
+  finally{$('confirm-delete-review').disabled=false}
+}
+
 function clearResume(){resumeTarget=null;$('resume-review')?.classList.add('hidden');$('home-status').textContent='본문의 문장과 문단을 비교합니다.'}
 async function compare(example=false){
   if(editing)return;
@@ -52,7 +97,7 @@ async function compare(example=false){
     const result=await callWorker('compare',{old:{name:selected.old.name,buffer:a},new:{name:selected.new.name,buffer:b}},[a,b]);
     if(job!==operation)return;
     if(resumeTarget&&result.fingerprint!==resumeTarget){toast('선택한 파일은 이 비교 기록의 원고와 다릅니다. 원문과 개고본을 확인하거나 기록 선택을 해제해 주세요.');return}
-    clearResume();currentExample=example;model=result;query='';filter='all';loadChoices();renderWorkspace();location.hash='use';showPage('use');saveChoices();
+    clearResume();currentExample=example;model=result;query='';filter='all';loadChoices();renderWorkspace();location.hash='use';showPage('use');saveChoices();await persistCurrent();
   }catch(e){if(job===operation){toast(e.message);$('home-status').textContent=e.message;model=null;showPage('use')}throw e}
   finally{if(job===operation)busy(false)}
 }
@@ -95,7 +140,7 @@ function paragraphBody(scene,g){
 function changeHeader(g){const v=choices[g.id];return `<div class="change-meta"><strong>문단 ${g.number}</strong><span class="change-type type-${g.description.kind}">${g.description.label}</span><span class="sentence-count">${g.description.before}문장 → ${g.description.after}문장</span>${g.description.structure?`<span class="structure-label">${g.description.structure}</span>`:''}<span class="choice-status ${v||''}">${v==='new'?'✓ 개고 채택됨':v==='old'?'✓ 원문 유지됨':'미선택'}</span></div><div class="choice-actions"><button class="choice-btn ${v==='old'?'selected':''}" data-choice="${g.id}" data-value="old" aria-pressed="${v==='old'}">${v==='old'?'✓ ':''}원문 유지</button><button class="choice-btn ${v==='new'?'selected':''}" data-choice="${g.id}" data-value="new" aria-pressed="${v==='new'}">${v==='new'?'✓ ':''}개고 채택</button><button class="text-btn clear-btn" data-choice="${g.id}" data-value="clear" aria-label="문단 ${g.number} 선택 해제" ${v?'':'disabled'}>↺</button></div>`}
 function context(scene,g,index){const n=g.a[1]-g.a[0],id=scene.id+'-e'+index,open=full||query||expanded.has(id)||n<=6;const render=(from,to)=>{let html='';for(let i=from;i<to;i++)html+=row(scene,g.a[0]+i,g.b[0]+i);return html};if(open)return (!full&&!query&&n>6?`<div class="context-gap"><button data-gap="${id}">같은 문단 접기 ↑</button></div>`:'')+render(0,n);return render(0,2)+`<div class="context-gap"><button data-gap="${id}">↕ 같은 문단 ${n-4}개 펼치기</button></div>`+render(n-2,n)}
 function renderDiff(reset=true){if(!model)return;const scene=model.scenes[sceneIndex],pane=$('diff-pane'),oldScroll=pane.scrollTop;const oldNumber=scene.oldIndex===null?'없음':scene.oldIndex+1,newNumber=scene.newIndex===null?'없음':scene.newIndex+1;$('current-title').textContent='장면 '+(sceneIndex+1);$('current-sub').textContent=`원문 ${oldNumber} → 개고 ${newNumber} · 변경 ${scene.changes}곳 · 검토 ${completed(scene)}/${scene.changes}`;
-  let html=(model.manuallyEdited?'<div class="warning-note">직접 편집한 개고본으로 비교 중입니다. 전체 개고본을 보관하려면 위의 <b>개고본 저장</b>을 눌러 주세요. 선택 원고 저장에는 채택한 문단만 포함됩니다.</div>':'')+'<div class="review-note">바뀐 글자만 강조합니다. 선택하면 양쪽 문단이 선택한 본문으로 바뀝니다. 미선택 문단은 원문으로 저장됩니다.</div>';const warnings=[...new Set([...model.original.warnings,...model.revised.warnings])];if(warnings.length)html+='<div class="warning-note">'+warnings.map(esc).join('<br>')+'</div>';
+  let html=(model.manuallyEdited?'<div class="warning-note">직접 편집한 개고본으로 비교 중입니다. 파일로도 보관하려면 위의 <b>개고본 저장</b>을 눌러 주세요. 선택 원고 저장에는 채택한 문단만 포함됩니다.</div>':'')+'<div class="review-note">바뀐 글자만 강조합니다. 선택하면 양쪽 문단이 선택한 본문으로 바뀝니다. 미선택 문단은 원문으로 저장됩니다.</div>';const warnings=[...new Set([...model.original.warnings,...model.revised.warnings])];if(warnings.length)html+='<div class="warning-note">'+warnings.map(esc).join('<br>')+'</div>';
   if(!model.totalChanges)html+='<div class="empty-result"><h3>본문이 같습니다.</h3><p>두 파일의 글꼴이나 쪽 배치가 달라도 본문이 같으면 변경으로 표시하지 않습니다.</p></div>';
   scene.segments.forEach((g,i)=>{if(g.type==='equal')html+=`<section data-context="${scene.id}-e${i}">${context(scene,g,i)}</section>`;else html+=`<section class="change ${choices[g.id]?'resolved':''} ${activeChange===g.id?'focused':''}" id="${g.id}" data-hunk="${g.id}"><div class="change-head">${changeHeader(g)}</div>${paragraphBody(scene,g)}</section>`});
   html+=`<div class="end-scene"><span>장면 ${sceneIndex+1} / ${model.scenes.length}</span><div class="scene-navigation" role="group" aria-label="장면 이동"><button data-prev-scene>← 이전 장면</button><button data-next-scene>다음 장면 →</button></div>${sceneIndex===model.scenes.length-1?'<button class="primary" data-export>선택한 원고 '+model.outputFormat.toUpperCase()+' 저장 ↓</button>':''}</div>`;pane.innerHTML=html;pane.style.scrollBehavior='auto';pane.scrollTop=reset?0:oldScroll;pane.style.scrollBehavior='';document.querySelectorAll('[data-view]').forEach(b=>{const on=(b.dataset.view==='full')===full;b.classList.toggle('active',on);b.setAttribute('aria-pressed',on)});document.querySelectorAll('[data-prev-scene]').forEach(b=>b.disabled=sceneIndex===0);document.querySelectorAll('[data-next-scene]').forEach(b=>b.disabled=sceneIndex===model.scenes.length-1);
@@ -128,7 +173,7 @@ async function applyEditor(){
   try{
     const result=await callWorker('edit',{fingerprint:model.fingerprint,text,choices:{...choices}});
     saveChoices();const previousScene=sceneIndex;model=result.comparison;choices=result.choices;sceneIndex=Math.min(previousScene,model.scenes.length-1);history=[];expanded.clear();activeChange=null;savedManuscript=null;currentExample=false;returnHomeAfterExport=false;query='';
-    files.new=null;updateFiles();saveChoices();renderWorkspace();$('edit-dialog').close();toast('개고본을 갱신했습니다. 새로 바뀐 문단을 확인해 주세요.');
+    files.new=null;updateFiles();saveChoices();renderWorkspace();await persistCurrent();$('edit-dialog').close();toast('개고본을 갱신했습니다. 새로 바뀐 문단을 확인해 주세요.');
   }catch(e){$('editor-error').textContent=e.message}
   finally{editing=false;$('apply-editor').disabled=false}
 }
@@ -160,6 +205,8 @@ for(const side of ['old','new']){$('pick-'+side).onclick=()=>$(side+'-input').cl
 document.addEventListener('dragover',e=>e.preventDefault());document.addEventListener('drop',e=>{e.preventDefault();toast('원문 또는 개고본 칸에 파일을 놓아 주세요.')});
 $('swap-btn').onclick=()=>{files={old:files.new,new:files.old};updateFiles()};$('compare-btn').onclick=()=>compare().catch(()=>{});$('demo-btn').onclick=()=>demo().catch(()=>{});$('cancel-btn').onclick=cancel;$('review-input').onchange=e=>{restore(e.target.files[0]);e.target.value=''};
 document.addEventListener('click',e=>{const b=e.target.closest('button,a');if(!b)return;
+  if(b.hasAttribute('data-delete-review')){requestDelete(b.dataset.deleteReview);return}
+  if(b.hasAttribute('data-confirm-delete-review')){deleteReview();return}
   if(b.hasAttribute('data-edit')){showEditor(b.dataset.edit);return}
   if(b.hasAttribute('data-apply-editor')){applyEditor();return}
   if(b.hasAttribute('data-close-editor')){closeEditor();return}

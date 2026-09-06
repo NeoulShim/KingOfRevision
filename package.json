@@ -10,7 +10,7 @@
     "dev": "vite --host 127.0.0.1 --port 5177 --strictPort",
     "build": "vite build",
     "preview": "vite preview --host 127.0.0.1 --port 4177 --strictPort",
-    "test": "node --test tests/core.test.js tests/save-flow.test.js tests/saved-reviews.test.js tests/editing.test.js",
+    "test": "node --test tests/core.test.js tests/save-flow.test.js tests/saved-reviews.test.js tests/editing.test.js tests/review-store.test.js",
     "examples": "node scripts/make-examples.js"
   },
   "dependencies": {
@@ -20,6 +20,7 @@
     "fflate": "0.8.3"
   },
   "devDependencies": {
+    "fake-indexeddb": "6.2.5",
     "vite": "8.2.2"
   }
 }

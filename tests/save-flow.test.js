@@ -1,3 +1,4 @@
+import {formatBytes} from '../src/core/review-store.js';
 import {editorText} from '../src/core/editing.js';
 import {REVIEW_PREFIX,reviewRecord,savedReviews} from '../src/core/saved-reviews.js';
 import test from 'node:test';
@@ -9,15 +10,17 @@ const controller=(await readFile(new URL('../src/controller.js',import.meta.url)
 function harness(){
   const nodes=new Map(),listeners=new Map(),downloads=[],storage=new Map();
   function node(id){if(!nodes.has(id))nodes.set(id,{id,open:false,value:id==='export-name'?'테스트 원고':'',textContent:'',innerHTML:'',classList:{toggle(){},add(){},remove(){}},events:{},addEventListener(type,fn){this.events[type]=fn},showModal(){this.open=true},close(){this.open=false},focus(){},click(){},setAttribute(){}});return nodes.get(id)}
+  const storedReviews=new Map(),storedDocuments=new Map();
+  const mockStore={putReview:async(fp,review)=>{storedReviews.set(fp,{fingerprint:fp,review})},list:async()=>[...storedReviews.values()],getSession:async fp=>storedDocuments.get(fp)||null,putSession:async(snapshot,review)=>{storedDocuments.set(snapshot.fingerprint,{...snapshot,review})},remove:async fp=>{storedReviews.delete(fp);storedDocuments.delete(fp)}};
   const context=vm.createContext({
     document:{getElementById:node,querySelectorAll:()=>[],querySelector:()=>null,addEventListener:(type,fn)=>listeners.set(type,fn)},
-    window:{addEventListener(){},scrollTo(){},confirm:()=>false},location:{hash:'use'},localStorage:{get length(){return storage.size},key:i=>[...storage.keys()][i]??null,getItem:key=>storage.get(key)||null,setItem:(key,value)=>storage.set(key,value)},
-    setTimeout:()=>1,clearTimeout(){},URL,Blob,console,editorText,REVIEW_PREFIX,reviewRecord,savedReviews,
+    window:{addEventListener(){},scrollTo(){},confirm:()=>false},location:{hash:'use'},localStorage:{get length(){return storage.size},key:i=>[...storage.keys()][i]??null,getItem:key=>storage.get(key)||null,removeItem:key=>storage.delete(key),setItem:(key,value)=>storage.set(key,value)},
+    setTimeout:()=>1,clearTimeout(){},URL,Blob,console,reviewStore:mockStore,formatBytes,navigator:{storage:{estimate:async()=>({usage:1024,quota:1048576})}},editorText,REVIEW_PREFIX,reviewRecord,savedReviews,
     choiceCounts:()=>({old:0,rev:1,pending:0}),selectedParagraphs:()=>['선택한 문장'],validateChoices:(_m,c)=>({...c}),
     workerCall:async()=>({buffer:new Uint8Array([1,2])}),recordDownload:(...args)=>downloads.push(args)
   });
   vm.runInContext(controller+`\ncallWorker=(...args)=>workerCall(...args);download=(...args)=>recordDownload(...args);
-    globalThis.api={requestHome,showExport,exportFile,cancel,backup,loadChoices,saveChoices,resumeReview,compare,showEditor,applyEditor,closeEditor,
+    globalThis.api={requestHome,showExport,exportFile,cancel,backup,loadChoices,saveChoices,resumeReview,compare,showEditor,applyEditor,closeEditor,requestDelete,deleteReview,
       setFiles(value){files=value},
       setModel(value){model=value},setChoices(value){choices=value},
       state(){return {model,choices,savedManuscript,exporting,returnHomeAfterExport,resumeTarget,sceneIndex}},
@@ -25,7 +28,7 @@ function harness(){
   const model={fingerprint:'same-documents',original:{name:'원문.hwpx'},revised:{name:'개고.hwpx'},outputFormat:'hwpx',scenes:[{changes:1}]};
   context.api.setModel(model);context.api.setChoices({p:'new'});
   const click=attrs=>{const dataset=Object.fromEntries(Object.entries(attrs).map(([k,v])=>[k.replace(/^data-/,'').replace(/-([a-z])/g,(_,c)=>c.toUpperCase()),v]));const b={dataset,hasAttribute:name=>name in attrs};listeners.get('click')({target:{closest:()=>b},preventDefault(){}})};
-  return {api:context.api,context,node,downloads,model,click,storage};
+  return {api:context.api,context,node,downloads,model,click,storage,storedReviews,storedDocuments};
 }
 test('logo prompts before leaving an unsaved manuscript; continue keeps the comparison',()=>{
   const h=harness();h.click({'data-home':''});assert.equal(h.node('leave-dialog').open,true);assert.equal(h.api.state().model,h.model);
@@ -84,7 +87,7 @@ test('home lists saved comparisons with escaped filenames and their progress',()
 });
 test('resuming a history entry rejects different documents without modifying its saved choices',async()=>{
   const h=harness();h.model.totalChanges=1;h.api.saveChoices();h.click({'data-leave-without-save':''});const before=h.storage.get(REVIEW_PREFIX+h.model.fingerprint);
-  h.api.resumeReview(h.model.fingerprint);h.api.setFiles({old:{name:'다른 원문.hwpx',arrayBuffer:async()=>new ArrayBuffer(0)},new:{name:'다른 개고.hwpx',arrayBuffer:async()=>new ArrayBuffer(0)}});
+  await h.api.resumeReview(h.model.fingerprint);h.api.setFiles({old:{name:'다른 원문.hwpx',arrayBuffer:async()=>new ArrayBuffer(0)},new:{name:'다른 개고.hwpx',arrayBuffer:async()=>new ArrayBuffer(0)}});
   h.context.workerCall=async()=>({fingerprint:'different'});await h.api.compare();
   assert.equal(h.api.state().model,null);assert.equal(h.api.state().resumeTarget,h.model.fingerprint);assert.equal(h.storage.get(REVIEW_PREFIX+h.model.fingerprint),before);assert(h.node('toast').textContent.includes('다릅니다'));
 });
@@ -108,4 +111,17 @@ test('failed editing retains the draft; applying updates the comparison and unsa
   h.context.workerCall=async()=>{throw Error('편집 실패')};await h.api.applyEditor();assert.equal(h.api.state().model,h.model);assert.equal(h.node('edit-dialog').open,true);assert.equal(h.node('manuscript-editor').value,'직접 쓴 문장');assert.equal(h.node('apply-editor').disabled,false);
   const next={...h.model,fingerprint:'edited',manuallyEdited:true,revised:{name:'개고_직접개고.hwpx'},scenes:[{new:['직접 쓴 문장'],changes:1}]};h.context.workerCall=async()=>({comparison:next,choices:{}});vm.runInContext('renderWorkspace=()=>{}',h.context);
   await h.api.applyEditor();assert.equal(h.api.state().model,next);assert.equal(h.api.changed(),true);assert.equal(h.node('edit-dialog').open,false);assert(h.storage.has(REVIEW_PREFIX+'edited'));
+});
+
+test('stored manuscripts reopen without selecting files and deletion removes only that record',async()=>{
+  const h=harness(),fp=h.model.fingerprint;
+  const result={...h.model,totalChanges:1,scenes:[{changes:1},{changes:0}]};
+  h.storage.set(REVIEW_PREFIX+fp,JSON.stringify({choices:{p:'old'},sceneIndex:1}));
+  h.storedDocuments.set(fp,{fingerprint:fp,documents:{},review:{choices:{p:'old'},sceneIndex:1}});
+  h.storedDocuments.set('other',{fingerprint:'other'});h.api.setModel(null);
+  h.context.workerCall=async type=>type==='restore'?result:{fingerprint:fp,documents:{}};
+  vm.runInContext('renderWorkspace=()=>{}',h.context);await h.api.resumeReview(fp);
+  assert.equal(h.api.state().model,result);assert.equal(h.api.state().choices.p,'old');assert.equal(h.api.state().sceneIndex,1);
+  h.api.setModel(null);h.api.requestDelete(fp);await h.api.deleteReview();
+  assert(!h.storedDocuments.has(fp));assert(!h.storage.has(REVIEW_PREFIX+fp));assert(h.storedDocuments.has('other'));
 });

@@ -12,6 +12,18 @@ async function handle({id,type,payload}){
     if(type==='compare'){
       const original=readDocument(payload.old.buffer,payload.old.name),revised=readDocument(payload.new.buffer,payload.new.name);
       const result=await comparison(original,revised);documents={original,revised};current=result;self.postMessage({id,result});
+    }else if(type==='snapshot'){
+      if(!current)throw Error('저장할 비교가 없습니다.');
+      self.postMessage({id,result:{fingerprint:current.fingerprint,documents,manuallyEdited:!!current.manuallyEdited}});
+    }else if(type==='restore'){
+      const snapshot=payload.snapshot;
+      const validate=d=>{
+        if(!d||!['hwp','hwpx'].includes(d.format)||typeof d.name!=='string'||!Array.isArray(d.paragraphs)||d.paragraphs.length>40000||d.paragraphs.some(p=>typeof p!=='string')||d.paragraphs.join('').length>1000000)throw Error('저장된 원고가 손상되었습니다. 파일을 다시 선택해 주세요.');
+        return {name:d.name,format:d.format,paragraphs:d.paragraphs,characters:d.paragraphs.join('').length,warnings:Array.isArray(d.warnings)?d.warnings.filter(v=>typeof v==='string'):[]};
+      };
+      const original=validate(snapshot?.documents?.original),revised=validate(snapshot?.documents?.revised),result=await comparison(original,revised);
+      if(result.fingerprint!==snapshot.fingerprint)throw Error('저장된 원고와 비교 기록이 맞지 않습니다.');
+      result.manuallyEdited=snapshot.manuallyEdited===true;documents={original,revised};current=result;self.postMessage({id,result});
     }else if(type==='edit'){
       if(!current||payload.fingerprint!==current.fingerprint)throw Error('편집 중인 비교가 달라졌습니다. 다시 열어 주세요.');
       const choices=validateChoices(current,payload.choices),paragraphs=editorParagraphs(payload.text);
