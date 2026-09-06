@@ -11,3 +11,5 @@ This is a text-oriented comparison tool. It does not preserve document layout, f
 
 - Save/leave regression tests execute the real controller in a Node VM with mock DOM and download/worker boundaries. They cover home prompts, skip/continue, successful/failed/cancelled exports, edits after or during export, backup-only state, and Escape during generation. They do not verify browser dialogs visually or actual disk download completion.
 - The saved marker is session-local and records a manuscript download request, not confirmation of the browser writing a file to disk.
+
+- Saved-review tests verify metadata-only storage (no manuscript text), legacy records, sorting, malformed entries, blocked storage, escaped filenames, rejecting mismatched documents without overwriting choices, and restoring the matching record and last scene.
