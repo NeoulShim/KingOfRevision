@@ -1,0 +1,44 @@
+import './style.css';
+import './guide.css';
+import './review.css';
+const crown='<svg viewBox="0 0 32 32" fill="none" aria-hidden="true"><path d="m4 10 7 5 5-10 5 10 7-5-3 16H7Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M8 30h16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>';
+const fileIcon='<svg viewBox="0 0 40 48" fill="none" aria-hidden="true"><path d="M8 3h16l9 9v32H8Z" stroke="currentColor" stroke-width="1.5"/><path d="M24 3v10h9M14 22h13M14 28h13M14 34h8" stroke="currentColor" stroke-width="1.5"/></svg>';
+document.querySelector('#app').innerHTML=`
+<header class="app-header">
+  <a class="brand" href="#use" data-page="use">${crown}<span>퇴고의 제왕<small>KING OF REVISION</small></span></a>
+  <div class="header-center"><span class="local-dot"></span>원고는 내 브라우저 안에서</div>
+  <nav class="page-tabs" aria-label="주 메뉴"><a href="#guide" data-page="guide">설명서</a><a href="#use" data-page="use">사용</a></nav>
+</header>
+<main id="home" class="home">
+  <div class="intro-title"><span class="eyebrow">HWP · HWPX 원고 비교</span><h1>간편하고 쉬운 개정 확인</h1><p>원문과 개고본을 넣고, 달라진 문장을 나란히 살펴보세요.</p></div>
+  <div class="file-pair">
+    <button class="file-card" id="pick-old"><span class="file-step">01 <span>ORIGINAL</span></span>${fileIcon}<strong>원문</strong><span class="file-name" id="old-file-label">HWP / HWPX 파일을 놓거나 눌러서 선택</span><span class="file-tag">.hwp · .hwpx</span></button>
+    <button id="swap-btn" class="swap-btn" aria-label="원문과 개고본 바꾸기" title="원문과 개고본 바꾸기">⇄</button>
+    <button class="file-card revised" id="pick-new"><span class="file-step">02 <span>REVISION</span></span>${fileIcon}<strong>개고본</strong><span class="file-name" id="new-file-label">수정한 HWP / HWPX 파일을 선택</span><span class="file-tag">.hwp · .hwpx</span></button>
+  </div>
+  <div class="compare-action"><button id="compare-btn" class="primary" disabled>두 원고 비교하기 <span>→</span></button><span id="home-status" role="status">본문의 문장과 문단을 비교합니다.</span></div>
+  <div class="scene-rule"><span class="return-symbol">↵</span><div><strong>장면 구분은 Enter 두 번</strong><p>문단 사이에 <b>빈 줄 하나</b>를 넣어 주세요. 빈 문단을 기준으로 장면을 나눕니다.</p></div><a class="text-btn" href="#guide" data-page="guide">설명 보기 ↗</a></div>
+  <section class="demo-card"><div class="demo-label">바로 체험하기<span>심너울의 단편소설</span></div><div class="demo-description"><h2>한 쪽이 너무 유리한 게임</h2><p>우주에 고립된 신혼부부와 체스판. 원문과 시연용 개고안을 비교해 보세요.</p></div><button class="secondary" id="demo-btn">예제로 비교하기 →</button></section>
+  <footer class="home-footer"><span>파일 전송 없음 · 회원가입 없음 · 한글 설치 없이 사용</span><span>심너울 제작 · 버전 1.0 · MIT License</span></footer>
+</main>
+<main id="guide" class="guide hidden">
+  <div class="guide-intro"><span class="eyebrow">퇴고의 제왕 · 설명서</span><h1>고친 문장을 확인하고,<br>남길 문장을 선택하세요.</h1><p>두 HWP / HWPX 원고를 비교하고, 선택한 수정으로 새 원고를 만드는 도구입니다.</p><div class="guide-actions"><a href="#use" class="primary button-link" data-page="use">내 원고 비교하기 →</a><button class="secondary" data-demo>예제로 비교하기 →</button></div></div>
+  <div class="guide-layout"><nav class="guide-index" aria-label="설명서 목차"><a href="#guide-start">사용 순서</a><a href="#guide-scenes">장면 구분</a><a href="#guide-save">저장과 선택 기록</a><a href="#guide-files">지원하는 파일</a><a href="#guide-about">만든 사람</a></nav><div class="guide-content">
+    <section id="guide-start"><span class="eyebrow">01 · 시작하기</span><h2>원고 두 개면 준비 끝</h2><ol class="guide-steps"><li><b>원문과 개고본을 선택합니다.</b><p>‘사용’ 화면에서 왼쪽에 원문, 오른쪽에 수정한 HWP 또는 HWPX 파일을 놓고 ‘두 원고 비교하기’를 누르세요.</p></li><li><b>달라진 부분을 읽습니다.</b><p>문장 안에서 달라진 글자만 강조합니다. 왼쪽의 빨강은 원문의 삭제·수정, 오른쪽의 초록은 개고본의 추가·수정입니다. 문단 위에는 ‘문구 수정’, ‘문장 교체’, ‘문장 나눔·합침’과 전후 문장 수가 표시됩니다. 문단 자체가 나뉘거나 합쳐진 경우도 따로 표시합니다. ‘전체 글’을 누르면 같은 문단도 모두 읽을 수 있습니다.</p></li><li><b>바뀐 문단마다 선택합니다.</b><p>‘원문 유지’ 또는 ‘개고 채택’을 고르세요. 바뀐 문단마다 선택 버튼이 붙습니다. 선택하면 양쪽 모두 선택한 문단으로 바뀌고, 변경 강조가 사라집니다. ‘원문 유지됨 / 개고 채택됨’ 표시로 결과를 확인하세요. 장면 전체를 한 번에 선택하거나, 선택을 해제하고 되돌릴 수도 있습니다.</p></li><li><b>새 원고를 저장합니다.</b><p>‘HWP 저장’ 또는 ‘HWPX 저장’을 누르면 선택한 본문을 합친 새 파일을 만듭니다. <strong>선택하지 않은 수정은 원문으로 저장됩니다.</strong></p></li></ol></section>
+    <section id="guide-scenes"><span class="eyebrow">02 · 장면 구분</span><h2>Enter 두 번, 빈 줄 하나</h2><p>장면을 바꾸고 싶은 문단 끝에서 <strong>Enter를 두 번</strong> 누르세요. 두 장면 사이에 생기는 빈 문단을 장면 경계로 사용합니다.</p><div class="rule-box"><pre>첫 번째 장면의 마지막 문단.↵
+↵
+두 번째 장면의 첫 문단.</pre><p>↵는 Enter로 문단을 나눈 자리를 나타냅니다.</p></div><p>빈 문단이 여러 개 연속되어도 경계는 하나로 봅니다. 문단 뒤 여백만 넓히거나 Shift + Enter로 줄만 바꾸는 것은 장면 구분이 아닙니다. 제목이나 ‘끝’ 앞에 빈 문단이 있으면 그 부분도 별도 장면으로 표시합니다.</p><p>장면 목록에서 읽을 곳을 고르거나 본문을 검색하세요. 단축키 <kbd>Alt</kbd> + <kbd>←</kbd> / <kbd>→</kbd>는 장면 이동, <kbd>Alt</kbd> + <kbd>↑</kbd> / <kbd>↓</kbd>는 수정 구간 이동입니다.</p></section>
+    <section id="guide-save"><span class="eyebrow">03 · 저장하기</span><h2>내가 선택한 본문으로</h2><p>원문을 유지할 곳과 개고를 채택할 곳을 합쳐 A4 기본 서식의 새 문서를 만듭니다. <strong>두 파일 모두 HWP이면 HWP로, 하나라도 HWPX이면 HWPX로 저장합니다.</strong> 장면 사이의 빈 문단도 선택에 따라 보존됩니다. TXT로도 저장할 수 있습니다. 컴퓨터에 있던 원본 파일을 덮어쓰지 않습니다.</p><p><strong>원본의 글꼴, 쪽 배치, 이미지, 표 모양은 저장본에 유지되지 않습니다.</strong> 본문 위주 원고를 위한 도구이며, 인쇄용 편집 상태를 그대로 옮기는 프로그램은 아닙니다.</p><h3>검토를 나중에 이어가려면</h3><p>수정 선택은 이 브라우저에 자동 저장합니다. 같은 두 원고를 다시 열면 선택을 이어갈 수 있습니다. 브라우저 데이터를 지우거나 시크릿 창을 닫으면 기록이 없어질 수 있으므로 ‘선택 백업’으로 보관해 두세요. 다른 기기에서도 같은 원고 두 개를 열고 ‘불러오기’로 백업을 적용할 수 있습니다.</p><p>원고 본문은 자동 저장하지 않습니다. 선택 백업에도 본문은 들어 있지 않으므로 원고 파일은 따로 보관해 주세요.</p></section>
+    <section id="guide-files"><span class="eyebrow">04 · 알아두기</span><h2>HWP와 HWPX 본문을 비교합니다</h2><p><strong>.hwp (HWP 5)</strong>와 <strong>.hwpx</strong> 파일을 지원합니다. 서로 다른 형식끼리도 비교할 수 있습니다. 오래된 HWP 3 문서는 한글에서 새 형식으로 다시 저장해 주세요. 확장자 이름만 바꾸면 열리지 않습니다.</p><p>파일 하나당 30 MB, 본문 100만 자, 4만 문단까지 읽습니다. 매우 많은 부분이 한꺼번에 바뀐 원고는 부별로 나누면 비교하기 쉽습니다. 암호·DRM·배포용 보호가 걸린 문서는 편집 가능한 사본이 필요합니다.</p><p>표·글상자·주석의 글자는 순서대로 펼쳐 읽으며, 이미지와 수식의 모양은 비교하지 않습니다. 한글의 변경 추적 기능으로 검토 중인 원고는 먼저 변경을 확정한 사본을 준비해 주세요.</p><h3>파일은 어디로 가나요?</h3><p>선택한 원고의 해석, 비교, 저장은 모두 내 브라우저에서 이루어집니다. 원고 파일과 본문을 서버로 전송하지 않습니다. 예제는 처음 열 때 이 사이트에서 불러옵니다.</p></section>
+    <section id="guide-about" class="about-card"><span class="eyebrow">05 · 이 도구에 대하여</span><h2>심너울이 만들었습니다.</h2><p>원문과 개고본을 나란히 읽고, 남기고 싶은 수정을 고르는 일을 조금 더 편하게 하고 싶었습니다.</p><dl class="about-meta"><div><dt>제작</dt><dd>심너울</dd></div><div><dt>버전</dt><dd>1.0</dd></div><div><dt>라이선스</dt><dd><a href="./LICENSE.txt" target="_blank" rel="noopener">MIT License ↗</a></dd></div></dl><a class="portfolio-link" href="https://thundering-pedestrian-751.notion.site/648661f180b94517ad1ee6723591d2cd" target="_blank" rel="noopener noreferrer">심너울 포트폴리오 ↗</a><p class="example-credit">예제 원작: 심너울, 「한 쪽이 너무 유리한 게임」. 저자의 허락을 받아 수록했습니다. 개고안은 비교 기능을 보여주기 위해 AI의 도움으로 만든 수정 제안입니다.</p><p class="muted"><a href="./THIRD_PARTY_NOTICES.txt" target="_blank" rel="noopener">오픈소스 고지 ↗</a></p></section>
+  </div></div>
+</main>
+<section id="workspace" class="workspace hidden" aria-label="원고 비교"></section>
+<input id="old-input" type="file" accept=".hwp,.hwpx" hidden><input id="new-input" type="file" accept=".hwp,.hwpx" hidden><input id="review-input" type="file" accept=".json" hidden>
+<dialog id="export-dialog"></dialog><div id="toast" role="status" aria-live="polite"></div><div id="busy" class="busy hidden" role="status"><div class="spinner"></div><b id="busy-label">원고를 읽고 있습니다…</b><button id="cancel-btn" class="secondary">취소</button></div>`;
+const {initialize,application}=await import('./controller.js');
+initialize();
+const {registerTools}=await import('./webmcp.js');
+const unregister=registerTools(application);
+window.addEventListener('pagehide',unregister,{once:true});
+if(import.meta.hot)import.meta.hot.dispose(unregister);

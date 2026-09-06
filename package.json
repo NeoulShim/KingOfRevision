@@ -1,0 +1,25 @@
+{
+  "name": "revision-king",
+  "productName": "퇴고의 제왕",
+  "version": "1.0.0",
+  "description": "브라우저에서 두 HWPX 원고를 비교하고 선택한 수정으로 새 원고를 저장하는 정적 웹 앱",
+  "type": "module",
+  "author": "심너울 (NeoulShim)",
+  "license": "MIT",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1 --port 5177 --strictPort",
+    "build": "vite build",
+    "preview": "vite preview --host 127.0.0.1 --port 4177 --strictPort",
+    "test": "node --test tests/core.test.js",
+    "examples": "node scripts/make-examples.js"
+  },
+  "dependencies": {
+    "cfb": "1.2.2",
+    "diff": "9.0.0",
+    "fast-xml-parser": "5.11.1",
+    "fflate": "0.8.3"
+  },
+  "devDependencies": {
+    "vite": "8.2.2"
+  }
+}

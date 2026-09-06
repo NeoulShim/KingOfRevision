@@ -1,0 +1,10 @@
+# Validation notes
+
+- Core tests cover exact original/revised reconstruction, independent paragraph selection, resolved paragraph presentation, sentence/paragraph split and merge labels, random edits, and a manuscript over 180,000 characters.
+- HWP and HWPX output are real CFB/HWP 5 and ZIP/HWPX containers. Round-trip tests check Korean, supplementary Unicode, XML entities, tabs, soft breaks and blank paragraphs.
+- Worker integration tests cover HWP + HWP, HWP + HWPX, HWPX + HWP, and HWPX + HWPX, including the automatic export format.
+- The author's original HWP was read as 162 paragraphs / 14,793 characters and independently extracted with Python/OLE. The exported example HWPX preserves every original paragraph, including empty ones.
+- Hancom GUI interoperability was not completed: Computer Use was stopped by the user. Native Hancom layout/open verification is still needed, especially for newly generated HWP files without cached line layout.
+- Browser visual/click QA was not requested. No such QA is claimed. WebMCP has a mock registration contract test; a supported live WebMCP validation context was not used. WebMCP support is optional and safely ignored in other browsers.
+
+This is a text-oriented comparison tool. It does not preserve document layout, figures or complex table formatting.
