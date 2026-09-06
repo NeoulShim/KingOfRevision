@@ -41,6 +41,10 @@ npm run build
 
 `npm run examples`는 예제 TXT에서 HWPX 파일을 다시 생성합니다. 원고 다운로드 링크는 화면에 두지 않으며, 예제 버튼은 준비된 HWPX 두 파일을 직접 읽습니다.
 
+## 버그 제보
+
+버그가 발생한 문서의 내용과 어떤 문제가 발생했는지 [neoulshim@gmail.com](mailto:neoulshim@gmail.com)으로 보내 주세요.
+
 ## 제작 및 라이선스
 
 제작: **심너울 (NeoulShim)** · 버전 **1.0** · 소프트웨어 **MIT License**.
