@@ -10,3 +10,7 @@
 체스 설명은 스테일메이트의 조건, 랜덤 체스 배치, 자기 말을 먼저 잃는 변형의 승리 조건, 변형 체스의 연대 설명을 정돈했습니다. 문장 나눔·합침과 문장 교체를 포함해 문단별 비교를 체험할 수 있습니다.
 
 확인 자료: [FIDE 체스 규칙](https://handbook.fide.com/chapter/E012023), [Chess960](https://lichess.org/variant/chess960), [Antichess](https://lichess.org/variant/antichess), [Atomic](https://lichess.org/variant/atomic).
+
+## 이용 조건
+
+원문과 개고안의 모든 형식(TXT·HWP·HWPX)은 앱 코드의 Apache License 2.0에서 제외됩니다. 별도 서면 허락 없이 수정·재배포하는 앱이나 별도 웹사이트에 이 소설을 포함할 수 없습니다. 해당 예제를 삭제하거나 이용·배포할 권리가 있는 원고로 교체해야 합니다. [예제 소설 이용 조건](LICENSE.txt)을 확인하세요.

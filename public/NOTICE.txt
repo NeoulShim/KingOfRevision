@@ -1,0 +1,9 @@
+퇴고의 제왕 (King of Revision)
+Copyright (c) 2026 심너울 (NeoulShim)
+
+Original author / 원저작자: 심너울 (NeoulShim)
+Project: https://github.com/NeoulShim/KingOfRevision
+
+Application code is licensed under the Apache License, Version 2.0.
+The example story and its demonstration revision are excluded from that
+license. See EXAMPLE_LICENSE.txt for their separate terms.

@@ -1,6 +1,7 @@
 퇴고의 제왕 — Third-party notices
 
-Application: MIT, Copyright (c) 2026 NeoulShim.
+Application: Apache-2.0, Copyright (c) 2026 심너울 (NeoulShim).
+See LICENSE.txt and NOTICE.txt for the application license and attribution.
 
 
 @nodable/entities 3.0.0

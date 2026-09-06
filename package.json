@@ -5,7 +5,7 @@
   "description": "브라우저에서 두 HWPX 원고를 비교하고 선택한 수정으로 새 원고를 저장하는 정적 웹 앱",
   "type": "module",
   "author": "심너울 (NeoulShim)",
-  "license": "MIT",
+  "license": "Apache-2.0",
   "scripts": {
     "dev": "vite --host 127.0.0.1 --port 5177 --strictPort",
     "build": "vite build",
