@@ -13,3 +13,5 @@ This is a text-oriented comparison tool. It does not preserve document layout, f
 - The saved marker is session-local and records a manuscript download request, not confirmation of the browser writing a file to disk.
 
 - Saved-review tests verify metadata-only storage (no manuscript text), legacy records, sorting, malformed entries, blocked storage, escaped filenames, rejecting mismatched documents without overwriting choices, and restoring the matching record and last scene.
+
+- Manual-edit tests cover text/paragraph/soft-break round trips, scene changes, retained unaffected choices, draft cancellation and failure recovery, updated fingerprints, invalid edit rollback, and revised/merged exports in HWP and HWPX. Worker requests run sequentially to keep edited and exported comparisons consistent.

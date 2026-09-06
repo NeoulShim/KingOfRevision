@@ -1,3 +1,4 @@
+import {editorText} from '../src/core/editing.js';
 import {REVIEW_PREFIX,reviewRecord,savedReviews} from '../src/core/saved-reviews.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -10,13 +11,13 @@ function harness(){
   function node(id){if(!nodes.has(id))nodes.set(id,{id,open:false,value:id==='export-name'?'테스트 원고':'',textContent:'',innerHTML:'',classList:{toggle(){},add(){},remove(){}},events:{},addEventListener(type,fn){this.events[type]=fn},showModal(){this.open=true},close(){this.open=false},focus(){},click(){},setAttribute(){}});return nodes.get(id)}
   const context=vm.createContext({
     document:{getElementById:node,querySelectorAll:()=>[],querySelector:()=>null,addEventListener:(type,fn)=>listeners.set(type,fn)},
-    window:{addEventListener(){},scrollTo(){}},location:{hash:'use'},localStorage:{get length(){return storage.size},key:i=>[...storage.keys()][i]??null,getItem:key=>storage.get(key)||null,setItem:(key,value)=>storage.set(key,value)},
-    setTimeout:()=>1,clearTimeout(){},URL,Blob,console,REVIEW_PREFIX,reviewRecord,savedReviews,
+    window:{addEventListener(){},scrollTo(){},confirm:()=>false},location:{hash:'use'},localStorage:{get length(){return storage.size},key:i=>[...storage.keys()][i]??null,getItem:key=>storage.get(key)||null,setItem:(key,value)=>storage.set(key,value)},
+    setTimeout:()=>1,clearTimeout(){},URL,Blob,console,editorText,REVIEW_PREFIX,reviewRecord,savedReviews,
     choiceCounts:()=>({old:0,rev:1,pending:0}),selectedParagraphs:()=>['선택한 문장'],validateChoices:(_m,c)=>({...c}),
     workerCall:async()=>({buffer:new Uint8Array([1,2])}),recordDownload:(...args)=>downloads.push(args)
   });
   vm.runInContext(controller+`\ncallWorker=(...args)=>workerCall(...args);download=(...args)=>recordDownload(...args);
-    globalThis.api={requestHome,showExport,exportFile,cancel,backup,loadChoices,saveChoices,resumeReview,compare,
+    globalThis.api={requestHome,showExport,exportFile,cancel,backup,loadChoices,saveChoices,resumeReview,compare,showEditor,applyEditor,closeEditor,
       setFiles(value){files=value},
       setModel(value){model=value},setChoices(value){choices=value},
       state(){return {model,choices,savedManuscript,exporting,returnHomeAfterExport,resumeTarget,sceneIndex}},
@@ -95,4 +96,16 @@ test('matching files restore the selected history record and last scene',async()
   const result={...h.model,totalChanges:1,scenes:[{changes:1},{changes:0}]};h.context.workerCall=async()=>result;
   vm.runInContext('renderWorkspace=()=>{}',h.context);await h.api.compare();
   assert.equal(h.api.state().choices.p,'old');assert.equal(h.api.state().sceneIndex,1);assert.equal(h.api.state().resumeTarget,null);assert.equal(h.api.state().model,result);
+});
+
+test('editor keeps an unapplied draft when closing is declined',()=>{
+  const h=harness();h.model.scenes=[{new:['개고 첫 문장',''],changes:1}];h.api.showEditor('revised');
+  assert.equal(h.node('manuscript-editor').value,'개고 첫 문장\n');h.node('manuscript-editor').value+='직접 쓴 글';h.api.closeEditor();assert.equal(h.node('edit-dialog').open,true);
+  h.context.window.confirm=()=>true;h.api.closeEditor();assert.equal(h.node('edit-dialog').open,false);
+});
+test('failed editing retains the draft; applying updates the comparison and unsaved state',async()=>{
+  const h=harness();h.model.totalChanges=1;h.model.scenes=[{new:['개고 첫 문장'],changes:1}];h.api.showEditor('revised');h.node('manuscript-editor').value='직접 쓴 문장';
+  h.context.workerCall=async()=>{throw Error('편집 실패')};await h.api.applyEditor();assert.equal(h.api.state().model,h.model);assert.equal(h.node('edit-dialog').open,true);assert.equal(h.node('manuscript-editor').value,'직접 쓴 문장');assert.equal(h.node('apply-editor').disabled,false);
+  const next={...h.model,fingerprint:'edited',manuallyEdited:true,revised:{name:'개고_직접개고.hwpx'},scenes:[{new:['직접 쓴 문장'],changes:1}]};h.context.workerCall=async()=>({comparison:next,choices:{}});vm.runInContext('renderWorkspace=()=>{}',h.context);
+  await h.api.applyEditor();assert.equal(h.api.state().model,next);assert.equal(h.api.changed(),true);assert.equal(h.node('edit-dialog').open,false);assert(h.storage.has(REVIEW_PREFIX+'edited'));
 });

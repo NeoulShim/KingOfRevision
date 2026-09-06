@@ -1,9 +1,11 @@
+import {editorText} from './core/editing.js';
 import {REVIEW_PREFIX,reviewRecord,savedReviews} from './core/saved-reviews.js';
 import {paragraphPresentation} from './core/review.js';
 import {choiceCounts,selectedParagraphs,validateChoices} from './core/compare.js';
 const $=id=>document.getElementById(id),fmt=n=>n.toLocaleString('ko-KR');
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 let files={old:null,new:null},model=null,choices={},sceneIndex=0,full=false,font=17,query='',filter='all',expanded=new Set(),history=[],worker=null,requests=new Map(),serial=0,operation=0,toastTimer,activeChange=null,storageOK=true;
+let editing=false,editDraftStart='';
 let resumeTarget=null,currentExample=false;
 let savedManuscript=null,returnHomeAfterExport=false,exporting=false;
 function manuscriptSnapshot(){return model?JSON.stringify([model.fingerprint,Object.entries(choices).sort(([a],[b])=>a.localeCompare(b))]):null}
@@ -15,7 +17,7 @@ function toast(message){$('toast').textContent=message;$('toast').classList.add(
 function busy(on,message='원고를 읽고 있습니다…'){$('busy').classList.toggle('hidden',!on);$('busy-label').textContent=message}
 function makeWorker(){if(worker)return;worker=new Worker(new URL('./worker.js',import.meta.url),{type:'module'});worker.onmessage=({data})=>{const request=requests.get(data.id);if(!request)return;requests.delete(data.id);data.error?request.reject(Error(data.error)):request.resolve(data.result)};worker.onerror=e=>{for(const r of requests.values())r.reject(Error('문서 처리 중 오류가 발생했습니다. 파일을 다시 선택해 주세요.'));requests.clear();worker?.terminate();worker=null;e.preventDefault()}}
 function callWorker(type,payload,transfer=[]){makeWorker();return new Promise((resolve,reject)=>{const id=++serial;requests.set(id,{resolve,reject});worker.postMessage({id,type,payload},transfer)})}
-function cancel(){if(exporting){operation++;exporting=false;busy(false);return}operation++;worker?.terminate();worker=null;for(const r of requests.values())r.reject(Error('작업을 취소했습니다.'));requests.clear();busy(false);model=null;showPage('use')}
+function cancel(){if(editing)return;if(exporting){operation++;exporting=false;busy(false);return}operation++;worker?.terminate();worker=null;for(const r of requests.values())r.reject(Error('작업을 취소했습니다.'));requests.clear();busy(false);model=null;showPage('use')}
 function storageKey(){return REVIEW_PREFIX+model.fingerprint}
 function saveChoices(){if(!model)return;try{const key=storageKey();let previous=null;try{previous=JSON.parse(localStorage.getItem(key))}catch{}localStorage.setItem(key,JSON.stringify(reviewRecord(model,{choices,sceneIndex,full,font,example:currentExample},previous)));storageOK=true}catch{storageOK=false}const node=$('save-label');if(node)node.textContent=storageOK?'선택 자동 저장됨':'자동 저장 공간 부족 · 선택을 백업해 주세요'}
 function loadChoices(){savedManuscript=null;returnHomeAfterExport=false;choices={};sceneIndex=Math.max(0,model.scenes.findIndex(s=>s.changes));full=false;font=17;try{const data=JSON.parse(localStorage.getItem(storageKey())||'null');if(data){choices=validateChoices(model,data.choices);sceneIndex=Number.isInteger(data.sceneIndex)?Math.max(0,Math.min(model.scenes.length-1,data.sceneIndex)):0;full=data.full===true;font=Number.isFinite(data.font)?Math.max(14,Math.min(24,data.font)):17;}}catch{choices={};sceneIndex=0}history=[];expanded.clear();activeChange=null}
@@ -41,6 +43,7 @@ function resumeReview(fingerprint){
 }
 function clearResume(){resumeTarget=null;$('resume-review')?.classList.add('hidden');$('home-status').textContent='본문의 문장과 문단을 비교합니다.'}
 async function compare(example=false){
+  if(editing)return;
   if(!files.old||!files.new)return;
   const job=++operation,selected={...files};busy(true,'두 원고에서 달라진 부분을 찾고 있습니다…');
   try{
@@ -54,6 +57,7 @@ async function compare(example=false){
   finally{if(job===operation)busy(false)}
 }
 async function demo(resumeFingerprint=null){
+  if(editing)return;
   clearResume();resumeTarget=resumeFingerprint;
   const job=++operation;busy(true,'예제 원문과 개고안을 준비하고 있습니다…');
   try{
@@ -69,7 +73,7 @@ async function demo(resumeFingerprint=null){
 }
 function renderWorkspace(){
   const oldName=model.original.name,newName=model.revised.name;
-  $('workspace').innerHTML=`<aside class="side" aria-label="장면 탐색"><div class="side-top"><button class="text-btn back-btn" data-home>← 다른 원고 비교</button><h2 class="side-title">원고의 변경 사항</h2><div class="doc-stat"><span>원문</span><strong>${fmt(model.original.characters)}자</strong></div><div class="doc-stat"><span>개고본</span><strong>${fmt(model.revised.characters)}자</strong></div><input class="search-input" id="search" type="search" placeholder="장면·본문 검색" aria-label="장면과 양쪽 본문 검색" value="${esc(query)}"></div><div class="side-filter"><select id="scene-filter" aria-label="장면 검토 상태"><option value="all">전체 장면</option><option value="pending">미검토 있음</option><option value="done">검토 완료</option></select><span id="scene-total"></span></div><nav id="scene-list" class="scene-list" aria-label="장면 목록"></nav><div class="side-progress"><div class="progress-text"><b>전체 검토</b><span id="progress-text"></span></div><div class="progress-track" role="progressbar" aria-label="검토 진행률" aria-valuemin="0" aria-valuemax="100"><div id="progress-fill" class="progress-fill"></div></div><div class="side-rule">장면 구분: <b>Enter 두 번</b><br>문단 사이의 빈 줄 하나를 기준으로 나눕니다.</div></div></aside><div class="main-panel"><div class="workspace-head"><div><h2 id="current-title"></h2><div class="sub" id="current-sub"></div></div><div class="head-actions"><button class="text-btn backup-action" data-backup>선택 백업 ↓</button><button class="text-btn backup-action" data-restore>불러오기</button><button class="primary" data-export>${model.outputFormat.toUpperCase()} 저장 ↓</button></div></div><div class="toolbar"><div class="toolbar-left"><div class="segmented"><button data-view="changes">변경만</button><button data-view="full">전체 글</button></div><button data-font="-1" aria-label="글자 작게">A−</button><span id="font-output" class="font-output"></span><button data-font="1" aria-label="글자 크게">A+</button><button data-prev-scene aria-label="이전 장면" title="이전 장면">← 이전 장면</button><button data-next-scene aria-label="다음 장면" title="다음 장면">다음 장면 →</button></div><div class="toolbar-right"><span class="toolbar-label">이 장면 전체</span><button data-scene-choice="old">원문 유지</button><button data-scene-choice="new">개고 채택</button><button data-next-pending>다음 미검토 ↗</button></div></div><div class="columns"><div><strong><i class="color-key"></i>원문</strong><small title="${esc(oldName)}">${esc(oldName)}</small></div><div><strong><i class="color-key new"></i>개고본</strong><small title="${esc(newName)}">${esc(newName)}</small></div></div><div class="diff-pane" id="diff-pane" tabindex="0" aria-label="원문과 개고본 비교"></div><footer class="workspace-footer"><div><span id="save-label">선택 자동 저장됨</span><button class="text-btn" id="undo-btn" data-undo>되돌리기</button></div><div><span class="footer-hint">Alt + ↑ ↓ 수정 이동</span><span id="counts"></span></div></footer></div>`;
+  $('workspace').innerHTML=`<aside class="side" aria-label="장면 탐색"><div class="side-top"><button class="text-btn back-btn" data-home>← 다른 원고 비교</button><h2 class="side-title">원고의 변경 사항</h2><div class="doc-stat"><span>원문</span><strong>${fmt(model.original.characters)}자</strong></div><div class="doc-stat"><span>개고본</span><strong>${fmt(model.revised.characters)}자</strong></div><input class="search-input" id="search" type="search" placeholder="장면·본문 검색" aria-label="장면과 양쪽 본문 검색" value="${esc(query)}"></div><div class="side-filter"><select id="scene-filter" aria-label="장면 검토 상태"><option value="all">전체 장면</option><option value="pending">미검토 있음</option><option value="done">검토 완료</option></select><span id="scene-total"></span></div><nav id="scene-list" class="scene-list" aria-label="장면 목록"></nav><div class="side-progress"><div class="progress-text"><b>전체 검토</b><span id="progress-text"></span></div><div class="progress-track" role="progressbar" aria-label="검토 진행률" aria-valuemin="0" aria-valuemax="100"><div id="progress-fill" class="progress-fill"></div></div><div class="side-rule">장면 구분: <b>Enter 두 번</b><br>문단 사이의 빈 줄 하나를 기준으로 나눕니다.</div></div></aside><div class="main-panel"><div class="workspace-head"><div><h2 id="current-title"></h2><div class="sub" id="current-sub"></div></div><div class="head-actions"><button data-edit="revised">개고본 직접 편집</button><button data-edit="merged">합친 원고 편집</button>${model.manuallyEdited?'<button data-download-revised>개고본 저장 ↓</button>':''}<button class="text-btn backup-action" data-backup>선택 백업 ↓</button><button class="text-btn backup-action" data-restore>불러오기</button><button class="primary" data-export>${model.outputFormat.toUpperCase()} 저장 ↓</button></div></div><div class="toolbar"><div class="toolbar-left"><div class="segmented"><button data-view="changes">변경만</button><button data-view="full">전체 글</button></div><button data-font="-1" aria-label="글자 작게">A−</button><span id="font-output" class="font-output"></span><button data-font="1" aria-label="글자 크게">A+</button><button data-prev-scene aria-label="이전 장면" title="이전 장면">← 이전 장면</button><button data-next-scene aria-label="다음 장면" title="다음 장면">다음 장면 →</button></div><div class="toolbar-right"><span class="toolbar-label">이 장면 전체</span><button data-scene-choice="old">원문 유지</button><button data-scene-choice="new">개고 채택</button><button data-next-pending>다음 미검토 ↗</button></div></div><div class="columns"><div><strong><i class="color-key"></i>원문</strong><small title="${esc(oldName)}">${esc(oldName)}</small></div><div><strong><i class="color-key new"></i>개고본</strong><small title="${esc(newName)}">${esc(newName)}</small></div></div><div class="diff-pane" id="diff-pane" tabindex="0" aria-label="원문과 개고본 비교"></div><footer class="workspace-footer"><div><span id="save-label">선택 자동 저장됨</span><button class="text-btn" id="undo-btn" data-undo>되돌리기</button></div><div><span class="footer-hint">Alt + ↑ ↓ 수정 이동</span><span id="counts"></span></div></footer></div>`;
   document.documentElement.style.setProperty('--font-size',font+'px');$('font-output').textContent=font;$('scene-filter').value=filter;
   $('search').oninput=()=>{clearTimeout($('search').searchTimer);$('search').searchTimer=setTimeout(()=>{query=$('search').value.trim();renderSidebar();renderDiff(false)},150)};
   $('scene-filter').onchange=()=>{filter=$('scene-filter').value;renderSidebar()};
@@ -91,7 +95,7 @@ function paragraphBody(scene,g){
 function changeHeader(g){const v=choices[g.id];return `<div class="change-meta"><strong>문단 ${g.number}</strong><span class="change-type type-${g.description.kind}">${g.description.label}</span><span class="sentence-count">${g.description.before}문장 → ${g.description.after}문장</span>${g.description.structure?`<span class="structure-label">${g.description.structure}</span>`:''}<span class="choice-status ${v||''}">${v==='new'?'✓ 개고 채택됨':v==='old'?'✓ 원문 유지됨':'미선택'}</span></div><div class="choice-actions"><button class="choice-btn ${v==='old'?'selected':''}" data-choice="${g.id}" data-value="old" aria-pressed="${v==='old'}">${v==='old'?'✓ ':''}원문 유지</button><button class="choice-btn ${v==='new'?'selected':''}" data-choice="${g.id}" data-value="new" aria-pressed="${v==='new'}">${v==='new'?'✓ ':''}개고 채택</button><button class="text-btn clear-btn" data-choice="${g.id}" data-value="clear" aria-label="문단 ${g.number} 선택 해제" ${v?'':'disabled'}>↺</button></div>`}
 function context(scene,g,index){const n=g.a[1]-g.a[0],id=scene.id+'-e'+index,open=full||query||expanded.has(id)||n<=6;const render=(from,to)=>{let html='';for(let i=from;i<to;i++)html+=row(scene,g.a[0]+i,g.b[0]+i);return html};if(open)return (!full&&!query&&n>6?`<div class="context-gap"><button data-gap="${id}">같은 문단 접기 ↑</button></div>`:'')+render(0,n);return render(0,2)+`<div class="context-gap"><button data-gap="${id}">↕ 같은 문단 ${n-4}개 펼치기</button></div>`+render(n-2,n)}
 function renderDiff(reset=true){if(!model)return;const scene=model.scenes[sceneIndex],pane=$('diff-pane'),oldScroll=pane.scrollTop;const oldNumber=scene.oldIndex===null?'없음':scene.oldIndex+1,newNumber=scene.newIndex===null?'없음':scene.newIndex+1;$('current-title').textContent='장면 '+(sceneIndex+1);$('current-sub').textContent=`원문 ${oldNumber} → 개고 ${newNumber} · 변경 ${scene.changes}곳 · 검토 ${completed(scene)}/${scene.changes}`;
-  let html='<div class="review-note">바뀐 글자만 강조합니다. 선택하면 양쪽 문단이 선택한 본문으로 바뀝니다. 미선택 문단은 원문으로 저장됩니다.</div>';const warnings=[...new Set([...model.original.warnings,...model.revised.warnings])];if(warnings.length)html+='<div class="warning-note">'+warnings.map(esc).join('<br>')+'</div>';
+  let html=(model.manuallyEdited?'<div class="warning-note">직접 편집한 개고본으로 비교 중입니다. 전체 개고본을 보관하려면 위의 <b>개고본 저장</b>을 눌러 주세요. 선택 원고 저장에는 채택한 문단만 포함됩니다.</div>':'')+'<div class="review-note">바뀐 글자만 강조합니다. 선택하면 양쪽 문단이 선택한 본문으로 바뀝니다. 미선택 문단은 원문으로 저장됩니다.</div>';const warnings=[...new Set([...model.original.warnings,...model.revised.warnings])];if(warnings.length)html+='<div class="warning-note">'+warnings.map(esc).join('<br>')+'</div>';
   if(!model.totalChanges)html+='<div class="empty-result"><h3>본문이 같습니다.</h3><p>두 파일의 글꼴이나 쪽 배치가 달라도 본문이 같으면 변경으로 표시하지 않습니다.</p></div>';
   scene.segments.forEach((g,i)=>{if(g.type==='equal')html+=`<section data-context="${scene.id}-e${i}">${context(scene,g,i)}</section>`;else html+=`<section class="change ${choices[g.id]?'resolved':''} ${activeChange===g.id?'focused':''}" id="${g.id}" data-hunk="${g.id}"><div class="change-head">${changeHeader(g)}</div>${paragraphBody(scene,g)}</section>`});
   html+=`<div class="end-scene"><span>장면 ${sceneIndex+1} / ${model.scenes.length}</span><div class="scene-navigation" role="group" aria-label="장면 이동"><button data-prev-scene>← 이전 장면</button><button data-next-scene>다음 장면 →</button></div>${sceneIndex===model.scenes.length-1?'<button class="primary" data-export>선택한 원고 '+model.outputFormat.toUpperCase()+' 저장 ↓</button>':''}</div>`;pane.innerHTML=html;pane.style.scrollBehavior='auto';pane.scrollTop=reset?0:oldScroll;pane.style.scrollBehavior='';document.querySelectorAll('[data-view]').forEach(b=>{const on=(b.dataset.view==='full')===full;b.classList.toggle('active',on);b.setAttribute('aria-pressed',on)});document.querySelectorAll('[data-prev-scene]').forEach(b=>b.disabled=sceneIndex===0);document.querySelectorAll('[data-next-scene]').forEach(b=>b.disabled=sceneIndex===model.scenes.length-1);
@@ -105,6 +109,34 @@ function undo(){if(!history.length)return;choices=history.pop();saveChoices();re
 function download(name,buffer,type){const url=URL.createObjectURL(new Blob([buffer],{type})),a=document.createElement('a');a.href=url;a.download=name;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),30000)}
 function backup(){if(!model)return;const value={type:'king-of-revision',version:2,fingerprint:model.fingerprint,original:model.original.name,revised:model.revised.name,choices,savedAt:new Date().toISOString()};download('퇴고의제왕_선택백업.json',JSON.stringify(value,null,2),'application/json;charset=utf-8');toast('선택 백업을 내려받습니다.')}
 async function restore(file){if(!model||!file)return;try{if(file.size>2*1024*1024)throw Error('선택 백업 파일은 2 MB까지 읽습니다.');const value=JSON.parse(await file.text());if(value.type!=='king-of-revision'||value.fingerprint!==model.fingerprint)throw Error('현재 두 원고에 해당하는 백업이 아닙니다.');const next=validateChoices(model,value.choices);history.push({...choices});choices=next;saveChoices();renderSidebar();renderDiff(false);toast('검토 선택을 불러왔습니다.')}catch(e){toast('불러오기 실패: '+(e instanceof SyntaxError?'JSON 백업 파일을 선택해 주세요.':e.message))}}
+function showEditor(mode){
+  if(!model||editing)return;
+  const paragraphs=mode==='merged'?selectedParagraphs(model,choices):model.scenes.flatMap(s=>s.new);
+  $('editor-title').textContent=mode==='merged'?'합친 원고 편집':'개고본 직접 편집';
+  $('editor-source').textContent=mode==='merged'?'지금까지 선택한 내용을 합친 원고입니다. 미선택 문단은 원문으로 들어 있습니다.':'현재 개고본 전체입니다. 원문은 바뀌지 않습니다.';
+  editDraftStart=editorText(paragraphs);$('manuscript-editor').value=editDraftStart;$('editor-error').textContent='';$('edit-dialog').showModal();
+}
+function closeEditor(){
+  if(editing)return;
+  if($('manuscript-editor').value!==editDraftStart&&!window.confirm('아직 적용하지 않은 글을 버리고 편집을 닫을까요?'))return;
+  $('edit-dialog').close();
+}
+async function applyEditor(){
+  if(!model||editing)return;
+  const text=$('manuscript-editor').value;if(text===editDraftStart){$('edit-dialog').close();return}
+  editing=true;$('apply-editor').disabled=true;$('editor-error').textContent='수정한 글로 다시 비교하고 있습니다…';
+  try{
+    const result=await callWorker('edit',{fingerprint:model.fingerprint,text,choices:{...choices}});
+    saveChoices();const previousScene=sceneIndex;model=result.comparison;choices=result.choices;sceneIndex=Math.min(previousScene,model.scenes.length-1);history=[];expanded.clear();activeChange=null;savedManuscript=null;currentExample=false;returnHomeAfterExport=false;query='';
+    files.new=null;updateFiles();saveChoices();renderWorkspace();$('edit-dialog').close();toast('개고본을 갱신했습니다. 새로 바뀐 문단을 확인해 주세요.');
+  }catch(e){$('editor-error').textContent=e.message}
+  finally{editing=false;$('apply-editor').disabled=false}
+}
+async function downloadRevised(){
+  if(!model||editing||exporting)return;
+  try{const result=await callWorker('export-revised',{});download(result.name,result.buffer,result.format==='hwpx'?'application/hwp+zip':'application/x-hwp');toast('직접 편집한 개고본 전체를 내려받습니다.')}
+  catch(e){toast(e.message)}
+}
 function showExport(forHome=false){if(!model)return;returnHomeAfterExport=forHome;const c=choiceCounts(model,choices),paragraphs=selectedParagraphs(model,choices);const name=model.original.name.replace(/\.hwpx?$/i,'').replace(/_(초고|원문|원본)$/,'')+'_선택원고';$('export-dialog').innerHTML=`<div class="dialog-heading"><h2>선택한 원고 저장</h2><button class="icon-btn" data-close="export-dialog" aria-label="닫기">×</button></div><div class="dialog-body export-form"><div class="export-stats"><div class="export-stat"><strong>${c.old}</strong>원문 유지</div><div class="export-stat"><strong>${c.rev}</strong>개고 채택</div><div class="export-stat"><strong>${c.pending}</strong>미선택</div></div>${c.pending?`<div class="export-warning">미선택 ${c.pending}개 구간은 원문으로 저장됩니다.</div>`:''}<label for="export-name">파일 이름</label><input id="export-name" class="export-name" value="${esc(name)}" maxlength="120"><p><b>${fmt(paragraphs.join('\n').length)}자</b> · 공백·줄바꿈 포함</p><p class="muted">선택한 본문을 A4 기본 서식의 새 ${model.outputFormat.toUpperCase()}로 저장합니다. 원본의 글꼴·쪽 배치·이미지·표 모양은 유지되지 않습니다. 두 파일 모두 HWP이면 HWP, 하나라도 HWPX이면 HWPX로 저장합니다.</p></div><div class="dialog-footer"><button data-save="txt">TXT 저장</button><button class="primary" data-save="document">${model.outputFormat.toUpperCase()} 내려받기 ↓</button></div>`;$('export-dialog').showModal()}
 async function exportFile(requested){
   if(!model||exporting)return;
@@ -128,6 +160,10 @@ for(const side of ['old','new']){$('pick-'+side).onclick=()=>$(side+'-input').cl
 document.addEventListener('dragover',e=>e.preventDefault());document.addEventListener('drop',e=>{e.preventDefault();toast('원문 또는 개고본 칸에 파일을 놓아 주세요.')});
 $('swap-btn').onclick=()=>{files={old:files.new,new:files.old};updateFiles()};$('compare-btn').onclick=()=>compare().catch(()=>{});$('demo-btn').onclick=()=>demo().catch(()=>{});$('cancel-btn').onclick=cancel;$('review-input').onchange=e=>{restore(e.target.files[0]);e.target.value=''};
 document.addEventListener('click',e=>{const b=e.target.closest('button,a');if(!b)return;
+  if(b.hasAttribute('data-edit')){showEditor(b.dataset.edit);return}
+  if(b.hasAttribute('data-apply-editor')){applyEditor();return}
+  if(b.hasAttribute('data-close-editor')){closeEditor();return}
+  if(b.hasAttribute('data-download-revised')){downloadRevised();return}
   if(b.hasAttribute('data-resume-review')){resumeReview(b.dataset.resumeReview);return}
   if(b.hasAttribute('data-clear-resume')){clearResume();return}
   if(b.hasAttribute('data-home')){e.preventDefault();requestHome();return}
@@ -148,6 +184,8 @@ document.addEventListener('click',e=>{const b=e.target.closest('button,a');if(!b
   if(b.hasAttribute('data-backup'))backup();if(b.hasAttribute('data-restore'))$('review-input').click();if(b.hasAttribute('data-undo'))undo();if(b.hasAttribute('data-export'))showExport();if(b.hasAttribute('data-save'))exportFile(b.dataset.save);
 });
 document.addEventListener('keydown',e=>{if(!model||document.querySelector('dialog[open]')||/INPUT|TEXTAREA|SELECT/.test(e.target.tagName)||!e.altKey||e.ctrlKey||e.metaKey)return;if(e.key==='ArrowLeft'){e.preventDefault();navigate(sceneIndex-1)}if(e.key==='ArrowRight'){e.preventDefault();navigate(sceneIndex+1)}if(e.key==='ArrowUp'){e.preventDefault();jump(-1)}if(e.key==='ArrowDown'){e.preventDefault();jump(1)}});
+$('edit-dialog').addEventListener('cancel',e=>{e.preventDefault();closeEditor()});
+$('manuscript-editor').addEventListener('keydown',e=>{if(e.key==='Enter'&&e.shiftKey){e.preventDefault();e.target.setRangeText('\u2028',e.target.selectionStart,e.target.selectionEnd,'end')}});
 $('export-dialog').addEventListener('cancel',()=>{returnHomeAfterExport=false;if(exporting)cancel()});
 window.addEventListener('storage',e=>{if(e.key===null||e.key?.startsWith(REVIEW_PREFIX))renderSavedReviews()});
 window.addEventListener('hashchange',()=>showPage(location.hash.slice(1)));window.addEventListener('beforeunload',saveChoices);
