@@ -18,3 +18,5 @@ This is a text-oriented comparison tool. It does not preserve document layout, f
 
 - IndexedDB tests verify manuscript persistence across reopening, review updates, atomic rollback on failed writes, and targeted deletion without affecting other records. Controller tests cover one-click resume and deletion boundaries.
 
+
+- Cloudflare Web Analytics is restricted to the public GitHub Pages app path. Tests verify duplicate prevention, exclusion of local/private/other project URLs, and that the supplied beacon configuration contains only the public site identifier and page-load mode. The app never passes manuscript text, filenames, editor input, or paragraph decisions to analytics.
