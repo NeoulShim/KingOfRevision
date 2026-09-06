@@ -10,7 +10,7 @@ document.querySelector('#app').innerHTML=`
   <nav class="page-tabs" aria-label="주 메뉴"><a href="#guide" data-page="guide">설명서</a><a href="#use" data-page="use">사용</a></nav>
 </header>
 <main id="home" class="home">
-  <div class="intro-title"><span class="eyebrow">HWP · HWPX 원고 비교</span><h1>간편하고 쉬운 개정 확인</h1><p>원문과 개고본을 넣고, 달라진 문장을 나란히 살펴보세요.</p></div>
+  <div class="intro-title"><span class="eyebrow">HWP · HWPX 원고 비교</span><h1>한 눈에 개정본 보고 원하는 부분만 합치기</h1><p>원문과 개고본을 넣고, 달라진 문장을 나란히 살펴보세요.</p></div>
   <div class="file-pair">
     <button class="file-card" id="pick-old"><span class="file-step">01 <span>ORIGINAL</span></span>${fileIcon}<strong>원문</strong><span class="file-name" id="old-file-label">HWP / HWPX 파일을 놓거나 눌러서 선택</span><span class="file-tag">.hwp · .hwpx</span></button>
     <button id="swap-btn" class="swap-btn" aria-label="원문과 개고본 바꾸기" title="원문과 개고본 바꾸기">⇄</button>
