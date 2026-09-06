@@ -3,15 +3,20 @@ import {choiceCounts,selectedParagraphs,validateChoices} from './core/compare.js
 const $=id=>document.getElementById(id),fmt=n=>n.toLocaleString('ko-KR');
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 let files={old:null,new:null},model=null,choices={},sceneIndex=0,full=false,font=17,query='',filter='all',expanded=new Set(),history=[],worker=null,requests=new Map(),serial=0,operation=0,toastTimer,activeChange=null,storageOK=true;
+let savedManuscript=null,returnHomeAfterExport=false,exporting=false;
+function manuscriptSnapshot(){return model?JSON.stringify([model.fingerprint,Object.entries(choices).sort(([a],[b])=>a.localeCompare(b))]):null}
+function needsManuscriptSave(){return !!model&&manuscriptSnapshot()!==savedManuscript}
+function goHome(){saveChoices();model=null;returnHomeAfterExport=false;location.hash='use';showPage('use');window.scrollTo(0,0)}
+function requestHome(){if(exporting)return;if(needsManuscriptSave()){if(!$('leave-dialog').open)$('leave-dialog').showModal()}else goHome()}
 const allChanges=()=>model?model.scenes.flatMap((s,i)=>s.segments.filter(g=>g.type==='change').map(g=>({...g,scene:i}))):[];
 function toast(message){$('toast').textContent=message;$('toast').classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('toast').classList.remove('show'),4500)}
 function busy(on,message='원고를 읽고 있습니다…'){$('busy').classList.toggle('hidden',!on);$('busy-label').textContent=message}
 function makeWorker(){if(worker)return;worker=new Worker(new URL('./worker.js',import.meta.url),{type:'module'});worker.onmessage=({data})=>{const request=requests.get(data.id);if(!request)return;requests.delete(data.id);data.error?request.reject(Error(data.error)):request.resolve(data.result)};worker.onerror=e=>{for(const r of requests.values())r.reject(Error('문서 처리 중 오류가 발생했습니다. 파일을 다시 선택해 주세요.'));requests.clear();worker?.terminate();worker=null;e.preventDefault()}}
 function callWorker(type,payload,transfer=[]){makeWorker();return new Promise((resolve,reject)=>{const id=++serial;requests.set(id,{resolve,reject});worker.postMessage({id,type,payload},transfer)})}
-function cancel(){operation++;worker?.terminate();worker=null;for(const r of requests.values())r.reject(Error('작업을 취소했습니다.'));requests.clear();busy(false);model=null;showPage('use')}
+function cancel(){if(exporting){operation++;exporting=false;busy(false);return}operation++;worker?.terminate();worker=null;for(const r of requests.values())r.reject(Error('작업을 취소했습니다.'));requests.clear();busy(false);model=null;showPage('use')}
 function storageKey(){return 'king-of-revision:2:'+model.fingerprint}
 function saveChoices(){if(!model)return;try{localStorage.setItem(storageKey(),JSON.stringify({choices,sceneIndex,full,font}));storageOK=true}catch{storageOK=false}const node=$('save-label');if(node)node.textContent=storageOK?'선택 자동 저장됨':'자동 저장 공간 부족 · 선택을 백업해 주세요'}
-function loadChoices(){choices={};sceneIndex=Math.max(0,model.scenes.findIndex(s=>s.changes));full=false;font=17;try{const data=JSON.parse(localStorage.getItem(storageKey())||'null');if(data){choices=validateChoices(model,data.choices);sceneIndex=Number.isInteger(data.sceneIndex)?Math.max(0,Math.min(model.scenes.length-1,data.sceneIndex)):0;full=data.full===true;font=Number.isFinite(data.font)?Math.max(14,Math.min(24,data.font)):17;}}catch{choices={};sceneIndex=0}history=[];expanded.clear();activeChange=null}
+function loadChoices(){savedManuscript=null;returnHomeAfterExport=false;choices={};sceneIndex=Math.max(0,model.scenes.findIndex(s=>s.changes));full=false;font=17;try{const data=JSON.parse(localStorage.getItem(storageKey())||'null');if(data){choices=validateChoices(model,data.choices);sceneIndex=Number.isInteger(data.sceneIndex)?Math.max(0,Math.min(model.scenes.length-1,data.sceneIndex)):0;full=data.full===true;font=Number.isFinite(data.font)?Math.max(14,Math.min(24,data.font)):17;}}catch{choices={};sceneIndex=0}history=[];expanded.clear();activeChange=null}
 function setFile(side,file){if(!file)return;if(!/\.hwpx?$/i.test(file.name)){toast('HWP 또는 HWPX 파일을 선택해 주세요.');return}if(file.size>30*1024*1024){toast('파일 하나당 30 MB까지 읽을 수 있습니다.');return}files[side]=file;updateFiles()}
 function updateFiles(){for(const side of ['old','new']){$(side+'-file-label').textContent=files[side]?files[side].name:side==='old'?'HWP / HWPX 파일을 놓거나 눌러서 선택':'수정한 HWP / HWPX 파일을 선택';$('pick-'+side).classList.toggle('ready',!!files[side]);}$('compare-btn').disabled=!(files.old&&files.new)}
 async function compare(){
@@ -77,17 +82,35 @@ function undo(){if(!history.length)return;choices=history.pop();saveChoices();re
 function download(name,buffer,type){const url=URL.createObjectURL(new Blob([buffer],{type})),a=document.createElement('a');a.href=url;a.download=name;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),30000)}
 function backup(){if(!model)return;const value={type:'king-of-revision',version:2,fingerprint:model.fingerprint,original:model.original.name,revised:model.revised.name,choices,savedAt:new Date().toISOString()};download('퇴고의제왕_선택백업.json',JSON.stringify(value,null,2),'application/json;charset=utf-8');toast('선택 백업을 내려받습니다.')}
 async function restore(file){if(!model||!file)return;try{if(file.size>2*1024*1024)throw Error('선택 백업 파일은 2 MB까지 읽습니다.');const value=JSON.parse(await file.text());if(value.type!=='king-of-revision'||value.fingerprint!==model.fingerprint)throw Error('현재 두 원고에 해당하는 백업이 아닙니다.');const next=validateChoices(model,value.choices);history.push({...choices});choices=next;saveChoices();renderSidebar();renderDiff(false);toast('검토 선택을 불러왔습니다.')}catch(e){toast('불러오기 실패: '+(e instanceof SyntaxError?'JSON 백업 파일을 선택해 주세요.':e.message))}}
-function showExport(){if(!model)return;const c=choiceCounts(model,choices),paragraphs=selectedParagraphs(model,choices);const name=model.original.name.replace(/\.hwpx?$/i,'').replace(/_(초고|원문|원본)$/,'')+'_선택원고';$('export-dialog').innerHTML=`<div class="dialog-heading"><h2>선택한 원고 저장</h2><button class="icon-btn" data-close="export-dialog" aria-label="닫기">×</button></div><div class="dialog-body export-form"><div class="export-stats"><div class="export-stat"><strong>${c.old}</strong>원문 유지</div><div class="export-stat"><strong>${c.rev}</strong>개고 채택</div><div class="export-stat"><strong>${c.pending}</strong>미선택</div></div>${c.pending?`<div class="export-warning">미선택 ${c.pending}개 구간은 원문으로 저장됩니다.</div>`:''}<label for="export-name">파일 이름</label><input id="export-name" class="export-name" value="${esc(name)}" maxlength="120"><p><b>${fmt(paragraphs.join('\n').length)}자</b> · 공백·줄바꿈 포함</p><p class="muted">선택한 본문을 A4 기본 서식의 새 ${model.outputFormat.toUpperCase()}로 저장합니다. 원본의 글꼴·쪽 배치·이미지·표 모양은 유지되지 않습니다. 두 파일 모두 HWP이면 HWP, 하나라도 HWPX이면 HWPX로 저장합니다.</p></div><div class="dialog-footer"><button data-save="txt">TXT 저장</button><button class="primary" data-save="document">${model.outputFormat.toUpperCase()} 내려받기 ↓</button></div>`;$('export-dialog').showModal()}
-async function exportFile(requested){if(!model)return;const format=requested==='txt'?'txt':model.outputFormat;const title=($('export-name')?.value||'선택한 원고').replace(/[<>:"/\\|?*\x00-\x1f]/g,'_').replace(/\.(hwpx?|txt)$/i,'').trim()||'선택한 원고';busy(true,'선택한 문장으로 '+format.toUpperCase()+'를 만들고 있습니다…');try{const result=await callWorker('export',{choices,format,title});download(title+'.'+format,result.buffer,format==='hwpx'?'application/hwp+zip':format==='hwp'?'application/x-hwp':'text/plain;charset=utf-8');$('export-dialog').close();toast('선택한 원고를 내려받습니다.')}catch(e){toast(e.message)}finally{busy(false)}}
+function showExport(forHome=false){if(!model)return;returnHomeAfterExport=forHome;const c=choiceCounts(model,choices),paragraphs=selectedParagraphs(model,choices);const name=model.original.name.replace(/\.hwpx?$/i,'').replace(/_(초고|원문|원본)$/,'')+'_선택원고';$('export-dialog').innerHTML=`<div class="dialog-heading"><h2>선택한 원고 저장</h2><button class="icon-btn" data-close="export-dialog" aria-label="닫기">×</button></div><div class="dialog-body export-form"><div class="export-stats"><div class="export-stat"><strong>${c.old}</strong>원문 유지</div><div class="export-stat"><strong>${c.rev}</strong>개고 채택</div><div class="export-stat"><strong>${c.pending}</strong>미선택</div></div>${c.pending?`<div class="export-warning">미선택 ${c.pending}개 구간은 원문으로 저장됩니다.</div>`:''}<label for="export-name">파일 이름</label><input id="export-name" class="export-name" value="${esc(name)}" maxlength="120"><p><b>${fmt(paragraphs.join('\n').length)}자</b> · 공백·줄바꿈 포함</p><p class="muted">선택한 본문을 A4 기본 서식의 새 ${model.outputFormat.toUpperCase()}로 저장합니다. 원본의 글꼴·쪽 배치·이미지·표 모양은 유지되지 않습니다. 두 파일 모두 HWP이면 HWP, 하나라도 HWPX이면 HWPX로 저장합니다.</p></div><div class="dialog-footer"><button data-save="txt">TXT 저장</button><button class="primary" data-save="document">${model.outputFormat.toUpperCase()} 내려받기 ↓</button></div>`;$('export-dialog').showModal()}
+async function exportFile(requested){
+  if(!model||exporting)return;
+  const job=++operation,exportModel=model,snapshot=manuscriptSnapshot(),exportChoices={...choices},leaveAfter=returnHomeAfterExport;
+  const format=requested==='txt'?'txt':model.outputFormat;
+  const title=($('export-name')?.value||'선택한 원고').replace(/[<>:"/\\|?*\x00-\x1f]/g,'_').replace(/\.(hwpx?|txt)$/i,'').trim()||'선택한 원고';
+  exporting=true;busy(true,'선택한 문장으로 '+format.toUpperCase()+'를 만들고 있습니다…');
+  try{
+    const result=await callWorker('export',{choices:exportChoices,format,title});
+    if(job!==operation||model!==exportModel)return;
+    download(title+'.'+format,result.buffer,format==='hwpx'?'application/hwp+zip':format==='hwp'?'application/x-hwp':'text/plain;charset=utf-8');
+    savedManuscript=snapshot;returnHomeAfterExport=false;$('export-dialog').close();
+    toast('선택한 원고를 내려받습니다.');
+    if(leaveAfter){exporting=false;requestHome()}
+  }catch(e){if(job===operation)toast(e.message)}
+  finally{if(job===operation){exporting=false;busy(false)}}
+}
+
 function showPage(page){const guide=page.startsWith('guide');$('guide')?.classList.toggle('hidden',!guide);$('home').classList.toggle('hidden',guide||!!model);$('workspace').classList.toggle('hidden',guide||!model);document.querySelectorAll('[data-page]').forEach(el=>{const active=el.dataset.page===(guide?'guide':'use');el.classList.toggle('active',active);el.setAttribute('aria-current',active?'page':'false')});if(page==='guide')window.scrollTo(0,0);else if(guide)document.getElementById(page)?.scrollIntoView({block:'start'})}
 for(const side of ['old','new']){$('pick-'+side).onclick=()=>$(side+'-input').click();$(side+'-input').onchange=e=>setFile(side,e.target.files[0]);const target=$('pick-'+side);target.addEventListener('dragover',e=>{e.preventDefault();target.classList.add('dragover')});target.addEventListener('dragleave',()=>target.classList.remove('dragover'));target.addEventListener('drop',e=>{e.preventDefault();e.stopPropagation();target.classList.remove('dragover');if(e.dataTransfer.files.length!==1){toast('한 칸에 원고 파일 하나씩 놓아 주세요.');return}setFile(side,e.dataTransfer.files[0])});}
 document.addEventListener('dragover',e=>e.preventDefault());document.addEventListener('drop',e=>{e.preventDefault();toast('원문 또는 개고본 칸에 파일을 놓아 주세요.')});
 $('swap-btn').onclick=()=>{files={old:files.new,new:files.old};updateFiles()};$('compare-btn').onclick=()=>compare().catch(()=>{});$('demo-btn').onclick=()=>demo().catch(()=>{});$('cancel-btn').onclick=cancel;$('review-input').onchange=e=>{restore(e.target.files[0]);e.target.value=''};
 document.addEventListener('click',e=>{const b=e.target.closest('button,a');if(!b)return;
+  if(b.hasAttribute('data-home')){e.preventDefault();requestHome();return}
+  if(b.hasAttribute('data-leave-without-save')){$('leave-dialog').close();goHome();return}
+  if(b.hasAttribute('data-save-before-home')){$('leave-dialog').close();showExport(true);return}
   if(b.hasAttribute('data-page')){e.preventDefault();location.hash=b.dataset.page;showPage(b.dataset.page)}
-  if(b.hasAttribute('data-close'))$(b.dataset.close).close();
+  if(b.hasAttribute('data-close')){if(b.dataset.close==='export-dialog'){returnHomeAfterExport=false;if(exporting)cancel()}$(b.dataset.close).close();return}
   if(b.hasAttribute('data-demo'))demo().catch(()=>{});
-  if(b.hasAttribute('data-home')){saveChoices();model=null;showPage('use');window.scrollTo(0,0)}
   if(!model)return;
   if(b.hasAttribute('data-scene'))navigate(Number(b.dataset.scene));
   if(b.hasAttribute('data-prev-scene'))navigate(sceneIndex-1);if(b.hasAttribute('data-next-scene'))navigate(sceneIndex+1);
@@ -100,6 +123,7 @@ document.addEventListener('click',e=>{const b=e.target.closest('button,a');if(!b
   if(b.hasAttribute('data-backup'))backup();if(b.hasAttribute('data-restore'))$('review-input').click();if(b.hasAttribute('data-undo'))undo();if(b.hasAttribute('data-export'))showExport();if(b.hasAttribute('data-save'))exportFile(b.dataset.save);
 });
 document.addEventListener('keydown',e=>{if(!model||document.querySelector('dialog[open]')||/INPUT|TEXTAREA|SELECT/.test(e.target.tagName)||!e.altKey||e.ctrlKey||e.metaKey)return;if(e.key==='ArrowLeft'){e.preventDefault();navigate(sceneIndex-1)}if(e.key==='ArrowRight'){e.preventDefault();navigate(sceneIndex+1)}if(e.key==='ArrowUp'){e.preventDefault();jump(-1)}if(e.key==='ArrowDown'){e.preventDefault();jump(1)}});
+$('export-dialog').addEventListener('cancel',()=>{returnHomeAfterExport=false;if(exporting)cancel()});
 window.addEventListener('hashchange',()=>showPage(location.hash.slice(1)));window.addEventListener('beforeunload',saveChoices);
 export const application={demo,showPage:page=>{location.hash=page;showPage(page)},getSummary:()=>model?{fingerprint:model.fingerprint,scenes:model.scenes.length,changes:model.totalChanges,...choiceCounts(model,choices)}:{loaded:false},choose:items=>applyChoices(items),openExport:showExport};
 export function initialize(){showPage(location.hash.slice(1)||'use');updateFiles()}

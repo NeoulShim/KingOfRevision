@@ -8,3 +8,6 @@
 - Browser visual/click QA was not requested. No such QA is claimed. WebMCP has a mock registration contract test; a supported live WebMCP validation context was not used. WebMCP support is optional and safely ignored in other browsers.
 
 This is a text-oriented comparison tool. It does not preserve document layout, figures or complex table formatting.
+
+- Save/leave regression tests execute the real controller in a Node VM with mock DOM and download/worker boundaries. They cover home prompts, skip/continue, successful/failed/cancelled exports, edits after or during export, backup-only state, and Escape during generation. They do not verify browser dialogs visually or actual disk download completion.
+- The saved marker is session-local and records a manuscript download request, not confirmation of the browser writing a file to disk.

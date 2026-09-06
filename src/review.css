@@ -4,3 +4,7 @@
 
 .end-scene{flex-wrap:wrap}
 .scene-navigation{display:flex;align-items:center;justify-content:center;gap:10px;flex-wrap:wrap}
+
+#leave-dialog{width:min(580px,calc(100vw - 32px))}
+#leave-dialog .dialog-footer{flex-wrap:wrap}
+#leave-dialog .dialog-body p{line-height:1.8;margin:0}
