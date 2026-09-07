@@ -125,3 +125,13 @@ test('stored manuscripts reopen without selecting files and deletion removes onl
   h.api.setModel(null);h.api.requestDelete(fp);await h.api.deleteReview();
   assert(!h.storedDocuments.has(fp));assert(!h.storage.has(REVIEW_PREFIX+fp));assert(h.storedDocuments.has('other'));
 });
+
+test('export format selection controls both the download extension and worker format',async()=>{
+ for(const format of ['docx','txt','hwp','hwpx']){const h=harness();h.api.showExport();h.node('export-format').value=format;let sent;h.context.workerCall=async(type,payload)=>{sent=payload;return {buffer:new Uint8Array([1])}};await h.api.exportFile('document');assert.equal(sent.format,format);assert.equal(h.downloads[0][0],'테스트 원고.'+format);}
+});
+
+test('DOCX comparison exposes only DOCX and TXT and rejects unsupported export requests',async()=>{
+ const h=harness();h.model.outputFormat='docx';h.model.exportFormats=['docx','txt'];h.api.showExport();
+ assert.match(h.node('export-dialog').innerHTML,/value="docx"/);assert.match(h.node('export-dialog').innerHTML,/value="txt"/);assert.doesNotMatch(h.node('export-dialog').innerHTML,/value="hwpx?"/);
+ await h.api.exportFile('hwp');assert.equal(h.downloads.length,0);
+});

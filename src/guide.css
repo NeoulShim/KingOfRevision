@@ -7,3 +7,5 @@
 .guide-content .author-support-note{display:flex;align-items:flex-start;gap:10px;flex:1 1 260px;min-width:0;margin:0;font-size:13px;line-height:1.85;color:#655476}
 .author-support-note strong{font-weight:600;color:#4f3c66}
 .support-book{font-size:23px;line-height:1.5;flex-shrink:0}
+
+.patch-list{max-width:900px;margin:0 auto 80px}.patch-card{padding:30px;margin-bottom:22px;background:#fff;border:1px solid var(--line);border-radius:14px}.patch-meta{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;color:var(--muted);font-size:14px}.patch-meta>span{color:var(--accent);font-weight:700}.patch-card h2{font-size:22px}.patch-card li{line-height:1.9;margin:6px 0}.patch-card ul{padding-left:22px}@media(max-width:640px){.patch-card{padding:20px}.page-tabs a{padding-left:10px;padding-right:10px}}

@@ -20,3 +20,7 @@ This is a text-oriented comparison tool. It does not preserve document layout, f
 
 
 - Cloudflare Web Analytics is restricted to the public GitHub Pages app path. Tests verify duplicate prevention, exclusion of local/private/other project URLs, and that the supplied beacon configuration contains only the public site identifier and page-load mode. The app never passes manuscript text, filenames, editor input, or paragraph decisions to analytics.
+
+- Version 1.1 tests cover DOCX OOXML round trips, split runs and hyperlinks, table paragraph order, tracked-revision rejection, TXT UTF-8/UTF-16/CP949 decoding and line endings, all 16 input format pairs, allowed output formats, direct edits and restored snapshots. DOCX/DOCX exports are restricted to DOCX/TXT in both the UI and worker.
+
+- Independently generated python-docx files were parsed successfully; exported DOCX paragraphs, tabs and soft breaks were read back by python-docx. Chrome verified the patchnotes route and updated file picker labels. Browser automated file selection was blocked by the extension file-URL permission, so this run does not claim a completed browser upload/download flow or native Word/Hancom verification.

@@ -1,10 +1,10 @@
-import { readDocument, writeDocument, outputFormat } from './core/document.js';
+import { readDocument, writeDocument, outputFormat, exportFormats } from './core/document.js';
 import { compareDocuments, selectedParagraphs, validateChoices } from './core/compare.js';
 import {editorParagraphs,retainChoices} from './core/editing.js';
 let current=null,documents=null,tasks=Promise.resolve();
 async function comparison(original,revised){
   const digest=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(JSON.stringify([2,original.paragraphs,revised.paragraphs])));
-  const result=compareDocuments(original,revised);result.outputFormat=outputFormat(original.format,revised.format);result.fingerprint=Array.from(new Uint8Array(digest),b=>b.toString(16).padStart(2,'0')).join('');return result;
+  const result=compareDocuments(original,revised);result.outputFormat=outputFormat(original.format,revised.format);result.exportFormats=exportFormats(original.format,revised.format);result.fingerprint=Array.from(new Uint8Array(digest),b=>b.toString(16).padStart(2,'0')).join('');return result;
 }
 self.onmessage=({data})=>{tasks=tasks.then(()=>handle(data))};
 async function handle({id,type,payload}){
@@ -18,7 +18,7 @@ async function handle({id,type,payload}){
     }else if(type==='restore'){
       const snapshot=payload.snapshot;
       const validate=d=>{
-        if(!d||!['hwp','hwpx'].includes(d.format)||typeof d.name!=='string'||!Array.isArray(d.paragraphs)||d.paragraphs.length>40000||d.paragraphs.some(p=>typeof p!=='string')||d.paragraphs.join('').length>1000000)throw Error('저장된 원고가 손상되었습니다. 파일을 다시 선택해 주세요.');
+        if(!d||!['hwp','hwpx','docx','txt'].includes(d.format)||typeof d.name!=='string'||!Array.isArray(d.paragraphs)||d.paragraphs.length>40000||d.paragraphs.some(p=>typeof p!=='string')||d.paragraphs.join('').length>1000000)throw Error('저장된 원고가 손상되었습니다. 파일을 다시 선택해 주세요.');
         return {name:d.name,format:d.format,paragraphs:d.paragraphs,characters:d.paragraphs.join('').length,warnings:Array.isArray(d.warnings)?d.warnings.filter(v=>typeof v==='string'):[]};
       };
       const original=validate(snapshot?.documents?.original),revised=validate(snapshot?.documents?.revised),result=await comparison(original,revised);
@@ -27,7 +27,7 @@ async function handle({id,type,payload}){
     }else if(type==='edit'){
       if(!current||payload.fingerprint!==current.fingerprint)throw Error('편집 중인 비교가 달라졌습니다. 다시 열어 주세요.');
       const choices=validateChoices(current,payload.choices),paragraphs=editorParagraphs(payload.text);
-      const revised={...documents.revised,paragraphs,characters:paragraphs.join('').length,name:documents.revised.name.replace(/(?:_직접개고)?\.(hwpx?)$/i,'_직접개고.$1')};
+      const revised={...documents.revised,paragraphs,characters:paragraphs.join('').length,name:documents.revised.name.replace(/(?:_직접개고)?\.(hwpx?|docx|txt)$/i,'_직접개고.$1')};
       const result=await comparison(documents.original,revised);result.manuallyEdited=true;
       const retained=retainChoices(current,result,choices);documents={...documents,revised};current=result;
       self.postMessage({id,result:{comparison:result,choices:retained}});
@@ -38,7 +38,8 @@ async function handle({id,type,payload}){
     }else if(type==='export'){
       if(!current)throw Error('먼저 두 원고를 비교해 주세요.');
       const choices=validateChoices(current,payload.choices),paragraphs=selectedParagraphs(current,choices);
-      const format=payload.format==='txt'?'txt':current.outputFormat;
+      const format=['hwp','hwpx','docx','txt'].includes(payload.format)?payload.format:current.outputFormat;
+      if(!current.exportFormats.includes(format))throw Error('DOCX 두 문서를 비교할 때는 DOCX 또는 TXT로 저장해 주세요.');
       const bytes=writeDocument(paragraphs,format,{title:payload.title});
       self.postMessage({id,result:{buffer:bytes.buffer,paragraphs:paragraphs.length,characters:paragraphs.join('\n').length}},[bytes.buffer]);
     }else throw Error('지원하지 않는 작업입니다.');
