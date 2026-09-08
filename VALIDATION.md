@@ -41,3 +41,7 @@ This is a text-oriented comparison tool. It does not preserve document layout, f
 - Browser verified editing a paragraph after scrolling down: reading position remains anchored after recomparison; the new manual-edit banner height is compensated instead of resetting to zero.
 - First-line indent is explicitly labeled in a separate paragraph layout row; 24pt appears in both textarea and styled preview. Browser console has no errors.
 - Regression tests cover absolute scroll fallback, sidebar/horizontal scroll, paragraph anchor compensation and indentation reset when switching to whole-manuscript editing.
+
+## Version 1.3
+- Structural matching tests cover standalone headings without blank lines, inserted parts with renumbering, removed parts, common repeated sentences, complete rewrites, unrelated untitled scenes, large paragraph expansions and old saved fingerprint restoration.
+- Each scenario verifies all-original and all-revised reconstruction, preserving paragraph order and blanks. Matching is heuristic and monotone; moves may appear as deletion/addition.

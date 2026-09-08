@@ -1,4 +1,3 @@
-import {heading,structuralPairs} from './structure.js';
 import {formatSignature} from './formatting.js';
 import { diffArrays, diffChars } from 'diff';
 import {describeChange} from './change-description.js';
@@ -8,7 +7,7 @@ export function splitScenes(paragraphs){
   const scenes=[];let start=0,seenText=false,afterBlank=false;
   for(let i=0;i<paragraphs.length;i++){
     const blank=paragraphs[i].trim()==='';
-    if(!blank&&seenText&&(afterBlank||heading(paragraphs[i]))){scenes.push({paragraphs:paragraphs.slice(start,i),start,index:scenes.length});start=i;seenText=false;}
+    if(!blank&&seenText&&afterBlank){scenes.push({paragraphs:paragraphs.slice(start,i),start,index:scenes.length});start=i;seenText=false;}
     if(!blank)seenText=true;afterBlank=blank&&seenText;
   }
   scenes.push({paragraphs:paragraphs.slice(start),start,index:scenes.length});return scenes;
@@ -19,7 +18,7 @@ function align(a,b,textOf,threshold=.28){
   if(!a.length)return b.map((_,j)=>[null,j]);if(!b.length)return a.map((_,i)=>[i,null]);
   const aa=a.map(v=>grams(textOf(v))),bb=b.map(v=>grams(textOf(v))),n=a.length,m=b.length;
   // Bound dynamic programming for very large rewrites. Positional pairing affects display only.
-  if(n*m>160000)return [...a.map((_,i)=>[i,null]),...b.map((_,j)=>[null,j])];
+  if(n*m>160000)return Array.from({length:Math.max(n,m)},(_,i)=>[i<n?i:null,i<m?i:null]);
   const score=Array.from({length:n},()=>new Float32Array(m)),dp=Array.from({length:n+1},()=>new Float32Array(m+1));
   for(let i=n-1;i>=0;i--)for(let j=m-1;j>=0;j--){const similarity=dice(aa[i],bb[j]);score[i][j]=similarity>=threshold?similarity-.18:0;dp[i][j]=Math.max(dp[i+1][j],dp[i][j+1],dp[i+1][j+1]+score[i][j])}
   let i=0,j=0;const rows=[];
@@ -39,9 +38,8 @@ function chunks(a,b){
 }
 function alignScenes(oldScenes,newScenes){
   const oldKeys=oldScenes.map(s=>s.paragraphs.join('\n')),newKeys=newScenes.map(s=>s.paragraphs.join('\n'));
-  if(oldScenes.length===1&&newScenes.length===1&&!heading(oldScenes[0].paragraphs[0]||'')&&!heading(newScenes[0].paragraphs[0]||''))return [[0,0]];
   const changes=chunks(oldKeys,newKeys),pairs=[];
-  for(const c of changes){if(c.type==='equal'){for(let k=0;k<c.a[1]-c.a[0];k++)pairs.push([c.a[0]+k,c.b[0]+k]);}else{for(const [a,b] of align(oldKeys.slice(...c.a),newKeys.slice(...c.b),s=>s,.38))pairs.push([a===null?null:c.a[0]+a,b===null?null:c.b[0]+b]);}}return pairs;
+  for(const c of changes){if(c.type==='equal'){for(let k=0;k<c.a[1]-c.a[0];k++)pairs.push([c.a[0]+k,c.b[0]+k]);}else{for(const [a,b] of pairGaps(align(oldKeys.slice(...c.a),newKeys.slice(...c.b),s=>s,.25)))pairs.push([a===null?null:c.a[0]+a,b===null?null:c.b[0]+b]);}}return pairs;
 }
 function inline(a,b){if(a===b)return null;const parts=diffChars(a,b,{timeout:30,maxEditLength:2400});if(!parts)return null;return [parts.filter(p=>!p.added).map(p=>[p.value,!!p.removed]),parts.filter(p=>!p.removed).map(p=>[p.value,!!p.added])];}
 function pairGaps(aligned){
@@ -49,11 +47,11 @@ function pairGaps(aligned){
   const flush=()=>{for(let i=0;i<Math.max(old.length,rev.length);i++)result.push([old[i]??null,rev[i]??null]);old=[];rev=[]};
   for(const [x,y] of aligned){if(x!==null&&y!==null){flush();result.push([x,y])}else{if(x!==null)old.push(x);if(y!==null)rev.push(y)}}flush();return result;
 }
-function paragraphPairs(a,b){const pairs=align(a,b,s=>s,.3);return a.length*b.length>160000?pairs:pairGaps(pairs)}
+function paragraphPairs(a,b){return pairGaps(align(a,b,s=>s,.3))}
 export function compareDocuments(original,revised){
-  const oldScenes=splitScenes(original.paragraphs),newScenes=splitScenes(revised.paragraphs),pairs=structuralPairs(oldScenes,newScenes,alignScenes);
+  const oldScenes=splitScenes(original.paragraphs),newScenes=splitScenes(revised.paragraphs),pairs=alignScenes(oldScenes,newScenes);
   let total=0,removed=0,added=0;
-  const scenes=pairs.map(({a:oi,b:ni,...structure},index)=>{
+  const scenes=pairs.map(([oi,ni],index)=>{
     const a=oi===null?[]:oldScenes[oi].paragraphs,b=ni===null?[]:newScenes[ni].paragraphs;
     const segments=[];let number=0;
     for(const block of chunks(a,b)){
@@ -76,7 +74,7 @@ export function compareDocuments(original,revised){
       }
     }
     const title=(a.find(p=>p.trim())||b.find(p=>p.trim())||'빈 문서').trim().slice(0,60);
-    return {...structure,id:`s${index+1}`,title,old:a,new:b,oldIndex:oi,newIndex:ni,oldStart:oi===null?null:oldScenes[oi].start,newStart:ni===null?null:newScenes[ni].start,changes:number,segments};
+    return {id:`s${index+1}`,title,old:a,new:b,oldIndex:oi,newIndex:ni,oldStart:oi===null?null:oldScenes[oi].start,newStart:ni===null?null:newScenes[ni].start,changes:number,segments};
   });
   return {original:{name:original.name,characters:original.characters,paragraphs:original.paragraphs.length,sceneCount:oldScenes.length,warnings:original.warnings||[]},revised:{name:revised.name,characters:revised.characters,paragraphs:revised.paragraphs.length,sceneCount:newScenes.length,warnings:revised.warnings||[]},scenes,totalChanges:total,removed,added};
 }

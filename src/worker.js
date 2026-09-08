@@ -1,12 +1,13 @@
+import {compareDocuments as legacyCompare} from './core/compare-legacy.js';
 import {normalizedFormats,editFormats,editFormat,selectedFormats,splitEditorFormat} from './core/formatting.js';
 import { readDocument, writeDocument, outputFormat, exportFormats } from './core/document.js';
 import { compareDocuments, selectedParagraphs, validateChoices } from './core/compare.js';
 import {editorParagraphs,retainChoices} from './core/editing.js';
 let current=null,documents=null,tasks=Promise.resolve();
-async function comparison(original,revised){
+async function comparison(original,revised,algorithmVersion=2){
   for(const d of [original,revised])if(d.formatting)d.formatting=normalizedFormats(d.paragraphs,d.formatting);
-  const digest=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(JSON.stringify(original.formatting||revised.formatting?[3,original.paragraphs,revised.paragraphs,original.formatting,revised.formatting]:[2,original.paragraphs,revised.paragraphs])));
-  const result=compareDocuments(original,revised);for(const scene of result.scenes){scene.oldFormatting=original.formatting?.slice(scene.oldStart,scene.oldStart+scene.old.length);scene.newFormatting=revised.formatting?.slice(scene.newStart,scene.newStart+scene.new.length);}result.outputFormat=outputFormat(original.format,revised.format);result.exportFormats=exportFormats(original.format,revised.format);result.fingerprint=Array.from(new Uint8Array(digest),b=>b.toString(16).padStart(2,'0')).join('');return result;
+  const digest=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(JSON.stringify(algorithmVersion===2?[4,original.paragraphs,revised.paragraphs,original.formatting,revised.formatting]:original.formatting||revised.formatting?[3,original.paragraphs,revised.paragraphs,original.formatting,revised.formatting]:[2,original.paragraphs,revised.paragraphs])));
+  const result=(algorithmVersion===1?legacyCompare:compareDocuments)(original,revised);result.algorithmVersion=algorithmVersion;for(const scene of result.scenes){scene.oldFormatting=original.formatting?.slice(scene.oldStart,scene.oldStart+scene.old.length);scene.newFormatting=revised.formatting?.slice(scene.newStart,scene.newStart+scene.new.length);}result.outputFormat=outputFormat(original.format,revised.format);result.exportFormats=exportFormats(original.format,revised.format);result.fingerprint=Array.from(new Uint8Array(digest),b=>b.toString(16).padStart(2,'0')).join('');return result;
 }
 self.onmessage=({data})=>{tasks=tasks.then(()=>handle(data))};
 async function handle({id,type,payload}){
@@ -16,14 +17,14 @@ async function handle({id,type,payload}){
       const result=await comparison(original,revised);documents={original,revised};current=result;self.postMessage({id,result});
     }else if(type==='snapshot'){
       if(!current)throw Error('저장할 비교가 없습니다.');
-      self.postMessage({id,result:{fingerprint:current.fingerprint,documents,manuallyEdited:!!current.manuallyEdited}});
+      self.postMessage({id,result:{fingerprint:current.fingerprint,algorithmVersion:current.algorithmVersion,documents,manuallyEdited:!!current.manuallyEdited}});
     }else if(type==='restore'){
       const snapshot=payload.snapshot;
       const validate=d=>{
         if(!d||!['hwp','hwpx','docx','txt'].includes(d.format)||typeof d.name!=='string'||!Array.isArray(d.paragraphs)||d.paragraphs.length>40000||d.paragraphs.some(p=>typeof p!=='string')||d.paragraphs.join('').length>1000000)throw Error('저장된 원고가 손상되었습니다. 파일을 다시 선택해 주세요.');
         return {name:d.name,format:d.format,paragraphs:d.paragraphs,characters:d.paragraphs.join('').length,warnings:Array.isArray(d.warnings)?d.warnings.filter(v=>typeof v==='string'):[],...(d.formatting?{formatting:normalizedFormats(d.paragraphs,d.formatting)}:{})};
       };
-      const original=validate(snapshot?.documents?.original),revised=validate(snapshot?.documents?.revised),result=await comparison(original,revised);
+      const original=validate(snapshot?.documents?.original),revised=validate(snapshot?.documents?.revised),result=await comparison(original,revised,snapshot.algorithmVersion===2?2:1);
       if(result.fingerprint!==snapshot.fingerprint)throw Error('저장된 원고와 비교 기록이 맞지 않습니다.');
       result.manuallyEdited=snapshot.manuallyEdited===true;documents={original,revised};current=result;self.postMessage({id,result});
     }else if(type==='edit'||type==='edit-paragraph'){

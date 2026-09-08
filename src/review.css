@@ -21,3 +21,5 @@
 #edit-dialog:has(#paragraph-formatting:not(.hidden)) #manuscript-editor{height:180px;min-height:140px}#edit-dialog:has(#paragraph-formatting:not(.hidden)) .dialog-body{max-height:78dvh}.type-format{background:#f2efff;border-color:#d9cff5;color:#655195}
 
 .paragraph-layout{margin-top:8px;background:#f7f8fb;border:1px solid #e0e2eb}.paragraph-layout label{font-weight:600}.paragraph-layout input{width:85px}
+
+.structure-note{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;background:#f3effb;border-bottom:1px solid #ddd5ed;padding:14px 20px;color:#64518d;font-size:13px}.structure-note small{font-size:11px}.structure-note button{margin:3px;padding:7px 10px}
