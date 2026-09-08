@@ -45,3 +45,6 @@ This is a text-oriented comparison tool. It does not preserve document layout, f
 ## Version 1.3
 - Structural matching tests cover standalone headings without blank lines, inserted parts with renumbering, removed parts, common repeated sentences, complete rewrites, unrelated untitled scenes, large paragraph expansions and old saved fingerprint restoration.
 - Each scenario verifies all-original and all-revised reconstruction, preserving paragraph order and blanks. Matching is heuristic and monotone; moves may appear as deletion/addition.
+
+## 1.3.1
+86 tests: same-part and cross-scene moves, repeated/cross-part exclusions, paired choices/clear, source/revised reconstruction under permutations and additions, destination formatting, v2 snapshot compatibility. Browser visual QA was not performed for this release.

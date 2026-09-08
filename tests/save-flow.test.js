@@ -1,3 +1,4 @@
+import {paragraphPresentation} from '../src/core/review.js';
 import {normalizeFormat,editFormat,styleRange} from '../src/core/formatting.js';
 import {formatBytes} from '../src/core/review-store.js';
 import {editorText} from '../src/core/editing.js';
@@ -16,7 +17,7 @@ function harness(){
   const context=vm.createContext({
     document:{getElementById:node,querySelectorAll:()=>[],querySelector:()=>null,addEventListener:(type,fn)=>listeners.set(type,fn)},
     window:{addEventListener(){},scrollTo(){},confirm:()=>false},location:{hash:'use'},localStorage:{get length(){return storage.size},key:i=>[...storage.keys()][i]??null,getItem:key=>storage.get(key)||null,removeItem:key=>storage.delete(key),setItem:(key,value)=>storage.set(key,value)},
-    setTimeout:()=>1,clearTimeout(){},URL,Blob,console,normalizeFormat,editFormat,styleRange,reviewStore:mockStore,formatBytes,navigator:{storage:{estimate:async()=>({usage:1024,quota:1048576})}},editorText,REVIEW_PREFIX,reviewRecord,savedReviews,
+    setTimeout:()=>1,clearTimeout(){},URL,Blob,console,paragraphPresentation,normalizeFormat,editFormat,styleRange,reviewStore:mockStore,formatBytes,navigator:{storage:{estimate:async()=>({usage:1024,quota:1048576})}},editorText,REVIEW_PREFIX,reviewRecord,savedReviews,
     choiceCounts:()=>({old:0,rev:1,pending:0}),selectedParagraphs:()=>['선택한 문장'],validateChoices:(_m,c)=>({...c}),
     workerCall:async()=>({buffer:new Uint8Array([1,2])}),recordDownload:(...args)=>downloads.push(args)
   });
@@ -148,3 +149,9 @@ test('applying an edit restores comparison and sidebar scroll',async()=>{const h
 test('indentation appears in text editor and preview and resets for whole manuscript',()=>{const h=harness();h.model.scenes=[{newStart:0,new:['문단'],newFormatting:[{paragraph:{firstLine:18},runs:[{text:'문단',style:{}}]}]}];h.click({'data-edit-paragraph':'0'});assert.equal(h.node('manuscript-editor').style.textIndent,'18pt');assert.match(h.node('format-preview').innerHTML,/text-indent:18pt/);h.api.showEditor('revised');assert.equal(h.node('manuscript-editor').style.textIndent,'0pt')});
 
 test('paragraph anchor stays at the same viewport offset when content above it changes height',async()=>{const h=harness();h.model.scenes=[{newStart:0,new:['문단'],newFormatting:[]}];h.node('diff-pane').scrollTop=850;h.node('diff-pane').getBoundingClientRect=()=>({top:100});h.context.anchorPosition=1200;h.context.document.querySelector=selector=>selector.startsWith('[data-edit-paragraph=')?{getBoundingClientRect:()=>({top:h.context.anchorPosition-h.node('diff-pane').scrollTop+100})}:null;h.api.showEditor('paragraph',0);h.node('manuscript-editor').value='고친 문단';const result={...h.model,fingerprint:'anchor-edited'};h.context.workerCall=async type=>type==='edit-paragraph'?{comparison:result,choices:{}}:{fingerprint:result.fingerprint,documents:{}};vm.runInContext("renderWorkspace=()=>{anchorPosition=1300;document.getElementById('diff-pane').scrollTop=0}",h.context);await h.api.applyEditor();assert.equal(h.node('diff-pane').scrollTop,950)});
+test('choosing or clearing a moved paragraph updates both positions together',()=>{
+ const h=harness();h.node('progress-fill').parentElement={setAttribute(){}};const desc={kind:'move',label:'문단 이동',before:1,after:0};const first={id:'s1-c1',type:'change',number:1,a:[0,1],b:[0,0],rows:[[0,null,null]],description:desc,move:{peerId:'s2-c1',peerScene:'s2'}},second={...first,id:'s2-c1',a:[0,0],b:[0,1],rows:[[null,0,null]],move:{peerId:'s1-c1',peerScene:'s1'}};
+ h.api.setModel({...h.model,totalChanges:2,scenes:[{id:'s1',title:'앞',old:['이동'],new:[],oldIndex:0,newIndex:0,segments:[first],changes:1},{id:'s2',title:'뒤',old:[],new:['이동'],oldIndex:1,newIndex:1,segments:[second],changes:1}]});h.api.setChoices({});
+ h.click({'data-choice':first.id,'data-value':'new'});assert.equal(h.api.state().choices[second.id],'new');
+ h.click({'data-choice':first.id,'data-value':'clear'});assert.equal(Object.keys(h.api.state().choices).length,0);
+});

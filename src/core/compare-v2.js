@@ -1,4 +1,3 @@
-import {markParagraphMoves,linkedChoices} from './paragraph-moves.js';
 import {heading,structuralPairs} from './structure.js';
 import {formatSignature} from './formatting.js';
 import { diffArrays, diffChars } from 'diff';
@@ -79,14 +78,12 @@ export function compareDocuments(original,revised){
     const title=(a.find(p=>p.trim())||b.find(p=>p.trim())||'빈 문서').trim().slice(0,60);
     return {...structure,id:`s${index+1}`,title,old:a,new:b,oldIndex:oi,newIndex:ni,oldStart:oi===null?null:oldScenes[oi].start,newStart:ni===null?null:newScenes[ni].start,changes:number,segments};
   });
-  markParagraphMoves(scenes);total=scenes.reduce((n,s)=>n+s.changes,0);
   return {original:{name:original.name,characters:original.characters,paragraphs:original.paragraphs.length,sceneCount:oldScenes.length,warnings:original.warnings||[]},revised:{name:revised.name,characters:revised.characters,paragraphs:revised.paragraphs.length,sceneCount:newScenes.length,warnings:revised.warnings||[]},scenes,totalChanges:total,removed,added};
 }
 export function selectedParagraphs(comparison,choices={}){
-  choices=linkedChoices(comparison,choices);
   const output=[];
   for(const scene of comparison.scenes)for(const g of scene.segments){const useNew=g.type==='change'&&choices[g.id]==='new';output.push(...scene[useNew?'new':'old'].slice(...(useNew?g.b:g.a)));}
   return output;
 }
 export function choiceCounts(comparison,choices){const ids=new Set(comparison.scenes.flatMap(s=>s.segments.filter(g=>g.type==='change').map(g=>g.id)));let old=0,rev=0;for(const [id,v] of Object.entries(choices)){if(!ids.has(id))continue;if(v==='old')old++;if(v==='new')rev++;}return {old,rev,pending:comparison.totalChanges-old-rev,done:old+rev}}
-export function validateChoices(comparison,input){if(!input||typeof input!=='object'||Array.isArray(input))throw Error('선택 기록 형식이 올바르지 않습니다.');const ids=new Set(comparison.scenes.flatMap(s=>s.segments.filter(g=>g.type==='change').map(g=>g.id)));for(const [k,v] of Object.entries(input))if(!ids.has(k)||!['old','new'].includes(v))throw Error('이 비교에 맞지 않는 선택 기록입니다.');return linkedChoices(comparison,input)}
+export function validateChoices(comparison,input){if(!input||typeof input!=='object'||Array.isArray(input))throw Error('선택 기록 형식이 올바르지 않습니다.');const ids=new Set(comparison.scenes.flatMap(s=>s.segments.filter(g=>g.type==='change').map(g=>g.id)));for(const [k,v] of Object.entries(input))if(!ids.has(k)||!['old','new'].includes(v))throw Error('이 비교에 맞지 않는 선택 기록입니다.');return {...input}}

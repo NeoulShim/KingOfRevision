@@ -15,5 +15,6 @@ export function retainChoices(before,after,choices){
   }
   for(const s of after.scenes)for(const g of s.segments)if(g.type==='change'){const k=key(s,g);counts.set(k,(counts.get(k)||0)+1)}
   for(const s of after.scenes)for(const g of s.segments)if(g.type==='change'){const k=key(s,g),v=old.get(k);if(v&&counts.get(k)===1)result[g.id]=v}
+  for(const s of after.scenes)for(const g of s.segments)if(g.move&&result[g.id]!==result[g.move.peerId]){delete result[g.id];delete result[g.move.peerId]}
   return result;
 }
