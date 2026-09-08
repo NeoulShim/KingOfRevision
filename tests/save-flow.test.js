@@ -1,3 +1,4 @@
+import {normalizeFormat,editFormat,styleRange} from '../src/core/formatting.js';
 import {formatBytes} from '../src/core/review-store.js';
 import {editorText} from '../src/core/editing.js';
 import {REVIEW_PREFIX,reviewRecord,savedReviews} from '../src/core/saved-reviews.js';
@@ -15,7 +16,7 @@ function harness(){
   const context=vm.createContext({
     document:{getElementById:node,querySelectorAll:()=>[],querySelector:()=>null,addEventListener:(type,fn)=>listeners.set(type,fn)},
     window:{addEventListener(){},scrollTo(){},confirm:()=>false},location:{hash:'use'},localStorage:{get length(){return storage.size},key:i=>[...storage.keys()][i]??null,getItem:key=>storage.get(key)||null,removeItem:key=>storage.delete(key),setItem:(key,value)=>storage.set(key,value)},
-    setTimeout:()=>1,clearTimeout(){},URL,Blob,console,reviewStore:mockStore,formatBytes,navigator:{storage:{estimate:async()=>({usage:1024,quota:1048576})}},editorText,REVIEW_PREFIX,reviewRecord,savedReviews,
+    setTimeout:()=>1,clearTimeout(){},URL,Blob,console,normalizeFormat,editFormat,styleRange,reviewStore:mockStore,formatBytes,navigator:{storage:{estimate:async()=>({usage:1024,quota:1048576})}},editorText,REVIEW_PREFIX,reviewRecord,savedReviews,
     choiceCounts:()=>({old:0,rev:1,pending:0}),selectedParagraphs:()=>['선택한 문장'],validateChoices:(_m,c)=>({...c}),
     workerCall:async()=>({buffer:new Uint8Array([1,2])}),recordDownload:(...args)=>downloads.push(args)
   });
@@ -134,4 +135,11 @@ test('DOCX comparison exposes only DOCX and TXT and rejects unsupported export r
  const h=harness();h.model.outputFormat='docx';h.model.exportFormats=['docx','txt'];h.api.showExport();
  assert.match(h.node('export-dialog').innerHTML,/value="docx"/);assert.match(h.node('export-dialog').innerHTML,/value="txt"/);assert.doesNotMatch(h.node('export-dialog').innerHTML,/value="hwpx?"/);
  await h.api.exportFile('hwp');assert.equal(h.downloads.length,0);
+});
+
+test('paragraph formatting applies with unchanged text and sends only the targeted paragraph',async()=>{
+ const h=harness();h.model.scenes=[{newStart:0,new:['첫 문단','둘째 문단'],newFormatting:[{paragraph:{firstLine:12},runs:[{text:'첫 문단',style:{size:11}}]}]}];
+ h.click({'data-edit-paragraph':'0'});assert.equal(h.node('manuscript-editor').value,'첫 문단');h.node('manuscript-editor').selectionStart=0;h.node('manuscript-editor').selectionEnd=1;
+ h.click({'data-format-run':'bold'});let sent;h.context.workerCall=async(type,payload)=>{sent={type,payload};throw Error('확인용 중단')};await h.api.applyEditor();
+ assert.equal(sent.type,'edit-paragraph');assert.equal(sent.payload.index,0);assert.equal(sent.payload.text,'첫 문단');assert.equal(sent.payload.paragraphFormatting.runs[0].style.bold,true);assert.equal(sent.payload.paragraphFormatting.runs[1].style.bold,undefined);assert.equal(h.node('edit-dialog').open,true);
 });

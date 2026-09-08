@@ -1,3 +1,4 @@
+import {docxStyles,docxParagraphXML} from './docx-formatting.js';
 import {unzipSync,zipSync,strToU8} from 'fflate';
 import {XMLParser,XMLValidator} from 'fast-xml-parser';
 const parser=new XMLParser({preserveOrder:true,ignoreAttributes:false,removeNSPrefix:true,attributeNamePrefix:'',trimValues:false,parseTagValue:false,parseAttributeValue:false,ignoreDeclaration:true});
@@ -24,21 +25,23 @@ export function readDocx(input,name='원고.docx'){
  const tree=parse(files[target]),body=find(tree,'body')[0]?.body;if(!body)throw Error('DOCX 본문이 없습니다.');
  if(['ins','del','moveFrom','moveTo','pPrChange','rPrChange','tblPrChange','trPrChange','tcPrChange','numberingChange','sectPrChange','cellIns','cellDel','cellMerge'].some(k=>find(body,k).length))throw Error('DOCX에 미확정 변경 내용 추적이 있습니다. 변경을 수락 또는 거절한 사본으로 비교해 주세요.');
  if(find(body,'altChunk').length)throw Error('외부 삽입 본문이 있는 DOCX입니다. Word에서 일반 본문으로 정리한 사본을 사용해 주세요.');
- const paragraphs=[];let chars=0;
+ const paragraphs=[],formatting=[];let chars=0;
+ const styleFile=target.slice(0,target.lastIndexOf('/')+1)+'styles.xml',styles=docxStyles(files[styleFile]?parse(files[styleFile]):[]);
+ function formatted(nodes){const base=styles.paragraph(nodes),runs=[];function walkRuns(list){for(const n of list){const k=key(n);if(skip.has(k))continue;if(k==='r')runs.push({text:text(n[k]),style:styles.run(n[k],base.style)});else if(k==='AlternateContent'){const c=n[k].find(n=>key(n)==='Choice')||n[k].find(n=>key(n)==='Fallback');if(c)walkRuns(c[key(c)])}else if(k&&Array.isArray(n[k]))walkRuns(n[k])}}walkRuns(nodes);return {paragraph:base.paragraph,runs:runs.length?runs:[{text:'',style:base.style}]}}
  function push(text){chars+=text.length;if(chars>1000000||paragraphs.length>=40000)throw Error('본문은 100만 자, 4만 문단까지 비교할 수 있습니다.');paragraphs.push(text)}
  const skip=new Set(['pPr','rPr','drawing','pict','object','sectPr']);
  function text(nodes){let s='';for(const n of nodes){const k=key(n);if(skip.has(k))continue;if(k==='t')s+=n[k].map(v=>String(v['#text']??'')).join('');else if(k==='tab')s+='\t';else if(k==='br'||k==='cr')s+='\n';else if(k==='noBreakHyphen')s+='\u2011';else if(k==='softHyphen')s+='\u00ad';else if(k==='AlternateContent'){const choice=n[k].find(c=>key(c)==='Choice')||n[k].find(c=>key(c)==='Fallback');if(choice)s+=text(choice[key(choice)])}else if(k&&Array.isArray(n[k]))s+=text(n[k]);}return s}
- function walk(nodes){for(const n of nodes){const k=key(n);if(skip.has(k))continue;if(k==='p')push(text(n[k]));else if(k==='AlternateContent'){const choice=n[k].find(c=>key(c)==='Choice')||n[k].find(c=>key(c)==='Fallback');if(choice)walk(choice[key(choice)])}else if(k&&Array.isArray(n[k]))walk(n[k]);}}
+ function walk(nodes){for(const n of nodes){const k=key(n);if(skip.has(k))continue;if(k==='p'){push(text(n[k]));formatting.push(formatted(n[k]));}else if(k==='AlternateContent'){const choice=n[k].find(c=>key(c)==='Choice')||n[k].find(c=>key(c)==='Fallback');if(choice)walk(choice[key(choice)])}else if(k&&Array.isArray(n[k]))walk(n[k]);}}
  walk(body);
- const warnings=['DOCX는 본문과 표 안의 문단을 순서대로 읽습니다. 머리말·꼬리말·각주·미주·글상자·이미지·자동 목록 번호와 원본 서식은 포함하지 않습니다.'];
- return {name,format:'docx',paragraphs:paragraphs.length?paragraphs:[''],characters:chars,warnings};
+ const warnings=['DOCX는 본문과 표 안의 문단을 순서대로 읽습니다. 머리말·꼬리말·각주·미주·글상자·이미지·자동 목록 번호는 포함하지 않습니다. 글꼴·크기·굵게·기울임·문단 들여쓰기와 정렬을 읽습니다. 테마 글꼴과 복잡한 서식은 제외합니다.'];
+ return {name,format:'docx',paragraphs:paragraphs.length?paragraphs:[''],characters:chars,warnings,formatting};
 }
 const escape=s=>s.replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&apos;'}[c]));
-export function writeDocx(paragraphs){
+export function writeDocx(paragraphs,{formatting=[]}={}){
  if(!Array.isArray(paragraphs)||paragraphs.some(p=>typeof p!=='string'))throw Error('저장할 문단 형식이 올바르지 않습니다.');
  if(paragraphs.length>40000||paragraphs.join('\n').length>1000000)throw Error('본문은 100만 자, 4만 문단까지 저장할 수 있습니다.');
  if(paragraphs.some(p=>/[\x00-\x08\x0b\x0c\x0e-\x1f]/.test(p)))throw Error('DOCX로 저장할 수 없는 제어문자가 있습니다.');
- const content=(paragraphs.length?paragraphs:['']).map(p=>'<w:p><w:pPr><w:spacing w:after="0" w:line="320" w:lineRule="auto"/></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial" w:eastAsia="맑은 고딕"/><w:sz w:val="22"/></w:rPr><w:t xml:space="preserve">'+escape(p).replace(/\t/g,'</w:t><w:tab/><w:t xml:space="preserve">').replace(/\r\n?|\n/g,'</w:t><w:br/><w:t xml:space="preserve">')+'</w:t></w:r></w:p>').join('');
+ const content=(paragraphs.length?paragraphs:['']).map((p,i)=>docxParagraphXML(p,formatting[i])).join('');
  return zipSync({
  '[Content_Types].xml':strToU8('<?xml version="1.0" encoding="UTF-8"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>'),
  '_rels/.rels':strToU8('<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>'),

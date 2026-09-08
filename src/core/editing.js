@@ -1,3 +1,4 @@
+import {formatSignature} from './formatting.js';
 const LIMITS={text:1000000,paragraphs:40000};
 export function editorText(paragraphs){return paragraphs.map(p=>p.replaceAll('\n','\u2028')).join('\n')}
 export function editorParagraphs(text){
@@ -7,7 +8,7 @@ export function editorParagraphs(text){
   return paragraphs;
 }
 export function retainChoices(before,after,choices){
-  const key=(s,g)=>JSON.stringify([s.oldStart===null?null:s.oldStart+g.a[0],s.old.slice(...g.a),s.new.slice(...g.b)]);
+  const key=(s,g)=>JSON.stringify([s.oldStart===null?null:s.oldStart+g.a[0],s.old.slice(...g.a),s.new.slice(...g.b),s.old.slice(...g.a).map((p,i)=>formatSignature(p,s.oldFormatting?.[g.a[0]+i])),s.new.slice(...g.b).map((p,i)=>formatSignature(p,s.newFormatting?.[g.b[0]+i]))]);
   const old=new Map(),counts=new Map(),result={};
   for(const s of before.scenes)for(const g of s.segments)if(g.type==='change'){
     const k=key(s,g);old.set(k,old.has(k)?null:choices[g.id]||null);

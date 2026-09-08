@@ -1,3 +1,4 @@
+import {formatSignature} from './formatting.js';
 import { diffArrays, diffChars } from 'diff';
 import {describeChange} from './change-description.js';
 
@@ -54,7 +55,15 @@ export function compareDocuments(original,revised){
     const a=oi===null?[]:oldScenes[oi].paragraphs,b=ni===null?[]:newScenes[ni].paragraphs;
     const segments=[];let number=0;
     for(const block of chunks(a,b)){
-      if(block.type==='equal'){segments.push(block);continue}
+      if(block.type==='equal'){
+        let start=0;const count=block.a[1]-block.a[0];
+        for(let i=0;i<count;i++){const ax=block.a[0]+i,by=block.b[0]+i,af=original.formatting?.[oldScenes[oi].start+ax],bf=revised.formatting?.[newScenes[ni].start+by];if(!af&&!bf||formatSignature(a[ax],af)===formatSignature(b[by],bf))continue;
+          if(i>start)segments.push({type:'equal',a:[block.a[0]+start,ax],b:[block.b[0]+start,by]});
+          const description=describeChange(a[ax],b[by],null,{oldParagraphs:1,newParagraphs:1});description.kind='format';description.label='서식 변경';description.structure='';
+          segments.push({type:'change',id:`s${index+1}-c${++number}`,number,a:[ax,ax+1],b:[by,by+1],kind:'modified',rows:[[ax,by,null]],description});total++;removed++;added++;start=i+1;
+        }
+        if(start<count)segments.push({type:'equal',a:[block.a[0]+start,block.a[1]],b:[block.b[0]+start,block.b[1]]});continue;
+      }
       let oldCursor=block.a[0],newCursor=block.b[0];
       for(const [x,y] of paragraphPairs(a.slice(...block.a),b.slice(...block.b))){
         const ax=x===null?null:block.a[0]+x,by=y===null?null:block.b[0]+y;

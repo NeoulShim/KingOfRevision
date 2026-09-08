@@ -13,7 +13,7 @@ export function outputFormat(a,b){return a==='hwpx'||b==='hwpx'?'hwpx':a===b?a:(
 export function writeDocument(paragraphs,format,options){
   if(format==='hwp')return writeHwp(paragraphs);
   if(format==='hwpx')return writeHwpx(paragraphs,options);
-  if(format==='docx')return writeDocx(paragraphs);
+  if(format==='docx')return writeDocx(paragraphs,options);
   if(format==='txt')return writeTxt(paragraphs);
   throw Error('지원하지 않는 저장 형식입니다.');
 }

@@ -24,3 +24,15 @@ This is a text-oriented comparison tool. It does not preserve document layout, f
 - Version 1.1 tests cover DOCX OOXML round trips, split runs and hyperlinks, table paragraph order, tracked-revision rejection, TXT UTF-8/UTF-16/CP949 decoding and line endings, all 16 input format pairs, allowed output formats, direct edits and restored snapshots. DOCX/DOCX exports are restricted to DOCX/TXT in both the UI and worker.
 
 - Independently generated python-docx files were parsed successfully; exported DOCX paragraphs, tabs and soft breaks were read back by python-docx. Chrome verified the patchnotes route and updated file picker labels. Browser automated file selection was blocked by the extension file-URL permission, so this run does not claim a completed browser upload/download flow or native Word/Hancom verification.
+
+
+## Version 1.2 validation (2026-09-08)
+- DOCX/HWPX multi-run font family, size, bold/italic, paragraph left/right/first-line indent and alignment round trips.
+- DOCX document defaults, basedOn paragraph styles, character styles and direct false overrides.
+- Real worker: mixed-source formatting on export, format-only choices, targeted paragraph edits, paragraph splitting, retention of unrelated choices, transactional rejection, and rich snapshot restoration.
+- Controller: format-only apply submits the targeted paragraph even when text is unchanged; a selected range changes without styling surrounding text.
+- Independently generated a formatted DOCX with python-docx, imported and exported it, and verified resulting text, point sizes, font names, bold/italic and indents with python-docx.
+- Existing text-only formats and 180k-character manuscript checks remain covered. Native Word/Hancom rendering has not been verified; table layout, pagination, theme fonts and complex typography are outside the supported subset.
+- Browser file-picker automation remains unavailable under the existing extension file access setting. Browser QA uses the built-in example; file input/output is verified through real worker and independent document tests.
+
+- Chrome UI verified: open a single paragraph, add text, select only the first sentence for bold, change font/size/first-line indent, apply and recompare, adopt and clear; both columns show the accepted text/styles without highlights. Console error log was empty.
