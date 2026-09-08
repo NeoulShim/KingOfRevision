@@ -56,5 +56,5 @@ test('all sixteen input format pairs can compare, restore and export every forma
 test('release notes have real timestamps, newest first, and match the displayed version',()=>{
  const notes=JSON.parse(readFileSync(new URL('../src/patchnotes.json',import.meta.url),'utf8'));let previous=Infinity;
  for(const n of notes){const time=Date.parse(n.time);assert.ok(Number.isFinite(time)&&time<=previous);assert.ok(n.items.length>0);previous=time;}
- const pkg=JSON.parse(readFileSync(new URL('../package.json',import.meta.url),'utf8'));assert.ok(pkg.version.startsWith(notes[0].version+'.'));
+ const pkg=JSON.parse(readFileSync(new URL('../package.json',import.meta.url),'utf8'));assert.ok(pkg.version===notes[0].version||pkg.version.startsWith(notes[0].version+'.'));
 });

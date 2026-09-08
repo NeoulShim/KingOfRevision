@@ -36,3 +36,8 @@ This is a text-oriented comparison tool. It does not preserve document layout, f
 - Browser file-picker automation remains unavailable under the existing extension file access setting. Browser QA uses the built-in example; file input/output is verified through real worker and independent document tests.
 
 - Chrome UI verified: open a single paragraph, add text, select only the first sentence for bold, change font/size/first-line indent, apply and recompare, adopt and clear; both columns show the accepted text/styles without highlights. Console error log was empty.
+
+## Version 1.2.1
+- Browser verified editing a paragraph after scrolling down: reading position remains anchored after recomparison; the new manual-edit banner height is compensated instead of resetting to zero.
+- First-line indent is explicitly labeled in a separate paragraph layout row; 24pt appears in both textarea and styled preview. Browser console has no errors.
+- Regression tests cover absolute scroll fallback, sidebar/horizontal scroll, paragraph anchor compensation and indentation reset when switching to whole-manuscript editing.

@@ -19,3 +19,5 @@
 
 .format-toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:10px;padding:12px;background:#f5f2fc;border-radius:8px}.format-toolbar label{display:flex;align-items:center;gap:5px;font-size:13px}.format-toolbar input{width:70px;padding:6px;border:1px solid #cdc7dc;border-radius:4px}.format-toolbar select{max-width:140px;padding:6px}.format-toolbar [aria-pressed="true"]{background:#e1d7ff;border-color:#8061c5}.format-preview-label{font-size:12px;color:#766591;margin-top:12px}#format-preview{padding:16px;margin:6px 0 12px;border:1px solid #ddd5ed;border-radius:8px;max-height:190px;overflow:auto;background:#fff}#format-preview .text{white-space:pre-wrap;overflow-wrap:anywhere;font:17px/1.9 serif;margin:0}
 #edit-dialog:has(#paragraph-formatting:not(.hidden)) #manuscript-editor{height:180px;min-height:140px}#edit-dialog:has(#paragraph-formatting:not(.hidden)) .dialog-body{max-height:78dvh}.type-format{background:#f2efff;border-color:#d9cff5;color:#655195}
+
+.paragraph-layout{margin-top:8px;background:#f7f8fb;border:1px solid #e0e2eb}.paragraph-layout label{font-weight:600}.paragraph-layout input{width:85px}
