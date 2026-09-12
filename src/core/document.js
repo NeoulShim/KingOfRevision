@@ -11,7 +11,7 @@ export function readDocument(bytes,name){
 }
 export function outputFormat(a,b){return a==='hwpx'||b==='hwpx'?'hwpx':a===b?a:(b==='txt'?a:b)}
 export function writeDocument(paragraphs,format,options){
-  if(format==='hwp')return writeHwp(paragraphs);
+  if(format==='hwp')return writeHwp(paragraphs,options);
   if(format==='hwpx')return writeHwpx(paragraphs,options);
   if(format==='docx')return writeDocx(paragraphs,options);
   if(format==='txt')return writeTxt(paragraphs);

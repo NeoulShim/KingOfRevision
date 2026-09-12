@@ -7,5 +7,36 @@ export function heading(text){
 function grams(text){const s=text.replace(/\s+/g,'').normalize('NFC'),out=new Set(),step=1;for(let i=0;i<s.length-1;i+=step)out.add(s.slice(i,i+2));return out}
 function similarity(a,b){if(!a.size||!b.size)return 0;let same=0;for(const x of a)if(b.has(x))same++;return 2*same/(a.size+b.size)}
 export function sequenceMatch(a,b,score){const n=a.length,m=b.length;if(n*m>160000)return [...a.map((_,i)=>[i,null]),...b.map((_,j)=>[null,j])];const dp=Array.from({length:n+1},()=>new Float64Array(m+1)),scores=Array.from({length:n},()=>new Float64Array(m));for(let i=n-1;i>=0;i--)for(let j=m-1;j>=0;j--){const s=Math.max(0,score(a[i],b[j]));scores[i][j]=s;dp[i][j]=Math.max(dp[i+1][j],dp[i][j+1],dp[i+1][j+1]+s)}let i=0,j=0;const out=[];while(i<n||j<m){if(i<n&&j<m&&scores[i][j]>0&&Math.abs(dp[i][j]-dp[i+1][j+1]-scores[i][j])<1e-8)out.push([i++,j++]);else if(i<n&&(j===m||dp[i+1][j]>=dp[i][j+1]))out.push([i++,null]);else out.push([null,j++])}return out}
-function units(scenes,kind){const out=[];for(let i=0;i<scenes.length;i++){const h=heading(scenes[i].paragraphs.find(p=>p.trim())||'');if(!out.length||h?.kind===kind)out.push({heading:h?.kind===kind?h:null,indices:[],body:[]});const unit=out.at(-1);unit.indices.push(i);unit.body.push(...scenes[i].paragraphs.filter(p=>p.trim()&&!heading(p)))}return out.map(u=>({...u,grams:grams(u.body.join('\n'))}))}
-export function structuralPairs(oldScenes,newScenes,matchScenes){const hs=[...oldScenes,...newScenes].map(s=>heading(s.paragraphs.find(p=>p.trim())||''));const kind=['권','부','장'].find(k=>hs.some(h=>h?.kind===k));if(!kind)return matchScenes(oldScenes,newScenes).map(([a,b])=>({a,b}));const aa=units(oldScenes,kind),bb=units(newScenes,kind);const pairs=sequenceMatch(aa,bb,(a,b)=>{if(!a.heading&&!b.heading)return 1;if(!a.heading||!b.heading)return 0;const x=a.heading,y=b.heading,sim=similarity(a.grams,b.grams),differentTitles=x.subtitle&&y.subtitle&&x.subtitle!==y.subtitle;if(sim>=(differentTitles ? .8 : .42))return .7+sim;if(x.subtitle&&y.subtitle)return x.subtitle===y.subtitle?1.2:0;return x.number===y.number ? .45:0});const out=[];pairs.forEach(([a,b],group)=>{const old=a===null?null:aa[a],rev=b===null?null:bb[b],partTitle=rev?.heading?.title||old?.heading?.title||'머리말',partStatus=!old?'added':!rev?'deleted':'matched',partKey='part-'+group;const aligned=old&&rev?matchScenes(old.indices.map(i=>oldScenes[i]),rev.indices.map(i=>newScenes[i])):old?old.indices.map((_,i)=>[i,null]):rev.indices.map((_,i)=>[null,i]);for(const [x,y] of aligned)out.push({a:x===null?null:old.indices[x],b:y===null?null:rev.indices[y],partTitle,partStatus,partKey})});return out}
+function units(scenes,kind,pageBreaks=false){const out=[];for(let i=0;i<scenes.length;i++){const h=heading(scenes[i].paragraphs.find(p=>p.trim())||'');if(!out.length||h?.kind===kind||(pageBreaks&&scenes[i].pageBreakBefore))out.push({heading:h?.kind===kind?h:null,indices:[],body:[]});const unit=out.at(-1);unit.indices.push(i);unit.body.push(...scenes[i].paragraphs.filter(p=>p.trim()&&!heading(p)))}return out.map(u=>({...u,grams:grams(u.body.join('\n'))}))}
+export function structuralPairs(oldScenes,newScenes,matchScenes){const hs=[...oldScenes,...newScenes].map(s=>heading(s.paragraphs.find(p=>p.trim())||''));const kind=['권','부','장'].find(k=>hs.some(h=>h?.kind===k));if([...oldScenes,...newScenes].some(s=>s.pageBreakBefore))return pageBreakPairs(oldScenes,newScenes,matchScenes,kind||'부');if(!kind)return matchScenes(oldScenes,newScenes).map(([a,b])=>({a,b}));const aa=units(oldScenes,kind),bb=units(newScenes,kind);const pairs=sequenceMatch(aa,bb,(a,b)=>{if(!a.heading&&!b.heading)return 1;if(!a.heading||!b.heading)return 0;const x=a.heading,y=b.heading,sim=similarity(a.grams,b.grams),differentTitles=x.subtitle&&y.subtitle&&x.subtitle!==y.subtitle;if(sim>=(differentTitles ? .8 : .42))return .7+sim;if(x.subtitle&&y.subtitle)return x.subtitle===y.subtitle?1.2:0;return x.number===y.number ? .45:0});const out=[];pairs.forEach(([a,b],group)=>{const old=a===null?null:aa[a],rev=b===null?null:bb[b],partTitle=rev?.heading?.title||old?.heading?.title||'머리말',partStatus=!old?'added':!rev?'deleted':'matched',partKey='part-'+group;const aligned=old&&rev?matchScenes(old.indices.map(i=>oldScenes[i]),rev.indices.map(i=>newScenes[i])):old?old.indices.map((_,i)=>[i,null]):rev.indices.map((_,i)=>[null,i]);for(const [x,y] of aligned)out.push({a:x===null?null:old.indices[x],b:y===null?null:rev.indices[y],partTitle,partStatus,partKey})});return out}
+
+// Unnamed parts are matched by their content, never just by their displayed number.
+// This keeps an inserted Ctrl+Enter part from shifting every subsequent comparison.
+function pageBreakPairs(oldScenes,newScenes,matchScenes,kind){
+ const aa=units(oldScenes,kind,true),bb=units(newScenes,kind,true);
+ const titleOf=(unit,index,all)=>{
+  const first=unit.body[0]?.trim()||'';
+  if(/^(?:프롤로그|에필로그|서문|머리말|후기|prologue|epilogue)$/i.test(first))return first;
+  return index===0&&all.some(u=>u.heading)?'머리말':`${index+1}부`;
+ };
+ const pairs=sequenceMatch(aa,bb,(a,b)=>{
+  const x=a.heading,y=b.heading,sim=similarity(a.grams,b.grams);
+  if(x&&y){
+   const differentTitles=x.subtitle&&y.subtitle&&x.subtitle!==y.subtitle;
+   if(sim>=(differentTitles ? .8 : .42))return .7+sim;
+   if(x.subtitle&&y.subtitle)return x.subtitle===y.subtitle?1.2:0;
+   return x.number===y.number ? .45 : 0;
+  }
+  if(a.body.join('\n')===b.body.join('\n'))return 1.7;
+  return sim>=.42 ? .7+sim : 0;
+ });
+ const out=[];
+ pairs.forEach(([a,b],group)=>{
+  const old=a===null?null:aa[a],rev=b===null?null:bb[b];
+  const partTitle=rev?.heading?.title||old?.heading?.title||(rev?titleOf(rev,b,bb):titleOf(old,a,aa));
+  const partStatus=!old?'added':!rev?'deleted':'matched',partKey='part-'+group;
+  const aligned=old&&rev?matchScenes(old.indices.map(i=>oldScenes[i]),rev.indices.map(i=>newScenes[i])):old?old.indices.map((_,i)=>[i,null]):rev.indices.map((_,i)=>[null,i]);
+  for(const [x,y] of aligned)out.push({a:x===null?null:old.indices[x],b:y===null?null:rev.indices[y],partTitle,partStatus,partKey});
+ });
+ return out;
+}

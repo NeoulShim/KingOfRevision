@@ -54,13 +54,22 @@ export function readHwp(input,filename='원고.hwp'){
     const raw=get(sections[section]),body=flags&1?inflateBounded(raw):raw;total+=body.length;if(total>MAX_STREAM)throw Error('HWP 본문의 전체 크기가 너무 큽니다.');
     const stack=new Map();
     for(const {tag,level,data} of hwpRecords(body)){
-      if(tag===66){if(blocks.length>=MAX_PARAS)throw Error('본문은 4만 문단까지 비교할 수 있습니다.');const block={text:'',kind:level?'nested':'body',section};blocks.push(block);stack.set(level,block);for(const l of stack.keys())if(l>level)stack.delete(l);if(level)nested=true;}
+      if(tag===66){
+        if(data.length<12)throw Error('HWP 문단 헤더가 손상되었습니다.');
+        if(blocks.length>=MAX_PARAS)throw Error('본문은 4만 문단까지 비교할 수 있습니다.');
+        const block={text:'',kind:level?'nested':'body',section};
+        // HWP 5, tables 58–59: byte 11, 0x04 is an explicit page break.
+        // PARA_LINE_SEG page-start flags are automatic layout, not part boundaries.
+        if(level===0&&(data[11]&0x04))block.pageBreakBefore=true;
+        blocks.push(block);stack.set(level,block);for(const l of stack.keys())if(l>level)stack.delete(l);if(level)nested=true;
+      }
       else if(tag===67){const block=stack.get(level-1);if(!block)throw Error('HWP 문단 연결이 올바르지 않습니다.');const text=textFromRecord(data);characters+=text.length;if(characters>MAX_TEXT)throw Error('본문은 100만 자까지 비교할 수 있습니다.');block.text+=text;}
       else if(tag===71&&data.length>=4){const id=new TextDecoder().decode(data.subarray(0,4));if(!['dces','dloc','onta','onwn','dhgp','tcgp','pngp'].includes(id))objects=true;}
     }
   }
   if(nested||objects)warnings.push('표·글상자·주석은 문서에 기록된 순서로 글자만 펼쳐 읽습니다. 이미지와 원본 배치는 저장본에 유지되지 않습니다.');
-  return {name:filename,format:'hwp',paragraphs:blocks.map(p=>p.text),blocks,characters,sections:sections.length,warnings};
+  const formatting=blocks.some(b=>b.pageBreakBefore)?blocks.map(b=>({paragraph:b.pageBreakBefore?{pageBreakBefore:true}:{},runs:[{text:b.text,style:{}}]})):undefined;
+  return {name:filename,format:'hwp',paragraphs:blocks.map(p=>p.text),blocks,characters,sections:sections.length,warnings,...(formatting?{formatting}:{})};
 }
 function record(tag,level,data){const ext=data.length>=4095,head=new Uint8Array(ext?8:4);view(head).setUint32(0,(tag|(level<<10)|(Math.min(data.length,4095)<<20))>>>0,true);if(ext)view(head).setUint32(4,data.length,true);return concat([head,data])}
 function encodeText(text){
@@ -73,13 +82,13 @@ function encodeText(text){
   }
   const out=new Uint8Array(codes.length*2),v=view(out);codes.forEach((c,i)=>v.setUint16(i*2,c,true));return out;
 }
-export function writeHwp(paragraphs){
+export function writeHwp(paragraphs,{formatting=[]}={}){
   if(!Array.isArray(paragraphs)||paragraphs.some(p=>typeof p!=='string'))throw Error('저장할 문단 형식이 올바르지 않습니다.');
   if(paragraphs.join('\n').length>MAX_TEXT||paragraphs.length>MAX_PARAS)throw Error('저장할 원고의 크기가 제한을 넘습니다.');
   const source=paragraphs.length?paragraphs:[''],records=[],prefix=binary(template.prefix);
   source.forEach((text,index)=>{
     const value=concat([index===0?prefix:new Uint8Array(),encodeText(text),new Uint8Array([13,0])]);
-    const head=new Uint8Array(24),h=view(head);h.setUint32(0,(value.length/2|(index===source.length-1?0x80000000:0))>>>0,true);h.setUint32(4,index===0?4:0,true);h.setUint16(8,19,true);head[10]=0;head[11]=index===0?3:0;h.setUint16(12,1,true);h.setUint16(16,0,true);h.setUint32(18,index+1,true);
+    const head=new Uint8Array(24),h=view(head);h.setUint32(0,(value.length/2|(index===source.length-1?0x80000000:0))>>>0,true);h.setUint32(4,index===0?4:0,true);h.setUint16(8,19,true);head[10]=0;head[11]=(index===0?3:0)|(formatting[index]?.paragraph?.pageBreakBefore===true?4:0);h.setUint16(12,1,true);h.setUint16(16,0,true);h.setUint32(18,index+1,true);
     const charShape=new Uint8Array(8);view(charShape).setUint32(4,6,true);
     // Omit layout caches so the editor computes line wrapping and page positions.
     records.push(record(66,0,head),record(67,1,value),record(68,1,charShape));

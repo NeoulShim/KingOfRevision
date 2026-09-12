@@ -58,9 +58,11 @@ export function readHwpx(input, filename='원고.hwpx'){
     }
   }
   function textContent(nodes){let value='';for(const node of nodes){if('#text' in node){value+=String(node['#text']);continue}const name=nameOf(node);if(name==='tab')value+='\t';else if(name==='lineBreak')value+='\n';else if(['nbSpace','fwSpace'].includes(name))value+=name==='nbSpace'?'\u00a0':'\u3000';else if(name&&Array.isArray(node[name]))value+=textContent(node[name]);}return value}
-  function readParagraph(nodes,context,depth,attributes={}){let text='',nested=false,runs=[];const paragraph=styles.paragraph(attributes.paraPrIDRef);
+  function readParagraph(nodes,context,depth,attributes={}){let text='',nested=false,runs=[],paragraph={...styles.paragraph(attributes.paraPrIDRef)};
+    if(context.kind==='body'&&['1','true'].includes(String(attributes.pageBreak)))paragraph.pageBreakBefore=true;
+    if(context.kind!=='body')delete paragraph.pageBreakBefore;
     const append=(value,style)=>{text+=value;runs.push({text:value,style})};
-    const flush=()=>{if(text!==''){push(text,context.kind,context.section,{paragraph,runs});text='';runs=[]}};
+    const flush=()=>{if(text!==''){push(text,context.kind,context.section,{paragraph,runs});text='';runs=[];paragraph={...paragraph};delete paragraph.pageBreakBefore}};
     function walk(list,d,style={}){if(d>LIMITS.depth)throw Error('문서 구조가 너무 깊어 처리할 수 없습니다.');for(const n of list){const name=nameOf(n);if(!name)continue;const children=Array.isArray(n[name])?n[name]:[];
       if(name==='run'){walk(children,d+1,styles.char(n[':@']?.charPrIDRef));continue}
       if(name==='t')append(textContent(children),style);
@@ -89,7 +91,7 @@ export function writeHwpx(paragraphs,{title='선택한 원고',formatting=[]}={}
   const colPr=section.match(/<hp:ctrl><hp:colPr\b[\s\S]*?<\/hp:ctrl>/)?.[0]||'';
   if(!secPr)throw Error('HWPX 저장 서식이 손상되었습니다.');
   const rich=hwpxWriter(template['Contents/header.xml']);
-  const paragraphsXML=(paragraphs.length?paragraphs:['']).map((p,i)=>{const f=rich.paragraph(p,formatting[i]);return `<hp:p id="${i}" paraPrIDRef="${f.id}" styleIDRef="0" pageBreak="0" columnBreak="0" merged="0">${i===0?`<hp:run charPrIDRef="0">${secPr}${colPr}</hp:run>`:''}${f.runs.map(r=>`<hp:run charPrIDRef="${r.id}"><hp:t>${runText(r.text)}</hp:t></hp:run>`).join('')}</hp:p>`}).join('');
+  const paragraphsXML=(paragraphs.length?paragraphs:['']).map((p,i)=>{const f=rich.paragraph(p,formatting[i]);return `<hp:p id="${i}" paraPrIDRef="${f.id}" styleIDRef="0" pageBreak="${f.pageBreakBefore?1:0}" columnBreak="0" merged="0">${i===0?`<hp:run charPrIDRef="0">${secPr}${colPr}</hp:run>`:''}${f.runs.map(r=>`<hp:run charPrIDRef="${r.id}"><hp:t>${runText(r.text)}</hp:t></hp:run>`).join('')}</hp:p>`}).join('');
   files['Contents/header.xml']=strToU8(rich.header());
   files['Contents/section0.xml']=strToU8(head+paragraphsXML+'</hs:sec>');
   const date=new Date().toISOString().replace(/\.\d{3}Z$/,'Z');

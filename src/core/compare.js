@@ -4,15 +4,18 @@ import {formatSignature} from './formatting.js';
 import { diffArrays, diffChars } from 'diff';
 import {describeChange} from './change-description.js';
 
-export function splitScenes(paragraphs){
+export function splitScenes(paragraphs,formatting=[]){
   if(!paragraphs.length)return [{paragraphs:[],start:0,index:0}];
-  const scenes=[];let start=0,seenText=false,afterBlank=false;
+  const scenes=[];let start=0,seenText=false,afterBlank=false,pendingBreak=false,pageBreakBefore=false;
+  const push=end=>scenes.push({paragraphs:paragraphs.slice(start,end),start,index:scenes.length,...(pageBreakBefore?{pageBreakBefore:true}:{})});
   for(let i=0;i<paragraphs.length;i++){
     const blank=paragraphs[i].trim()==='';
-    if(!blank&&seenText&&(afterBlank||heading(paragraphs[i]))){scenes.push({paragraphs:paragraphs.slice(start,i),start,index:scenes.length});start=i;seenText=false;}
+    if(formatting[i]?.paragraph?.pageBreakBefore===true)pendingBreak=true;
+    if(!blank&&seenText&&(afterBlank||heading(paragraphs[i])||pendingBreak)){push(i);start=i;seenText=false;pageBreakBefore=false;}
+    if(!blank){if(pendingBreak)pageBreakBefore=true;pendingBreak=false;}
     if(!blank)seenText=true;afterBlank=blank&&seenText;
   }
-  scenes.push({paragraphs:paragraphs.slice(start),start,index:scenes.length});return scenes;
+  push(paragraphs.length);return scenes;
 }
 function grams(text){const value=text.replace(/\s+/g,'').normalize('NFC');const set=new Set();const stride=Math.max(1,Math.floor(value.length/2200));for(let i=0;i<value.length-1;i+=stride)set.add(value.slice(i,i+2));return set}
 function dice(a,b){if(!a.size&&!b.size)return 1;let same=0;for(const key of a)if(b.has(key))same++;return 2*same/(a.size+b.size)}
@@ -52,7 +55,7 @@ function pairGaps(aligned){
 }
 function paragraphPairs(a,b){const pairs=align(a,b,s=>s,.3);return a.length*b.length>160000?pairs:pairGaps(pairs)}
 export function compareDocuments(original,revised){
-  const oldScenes=splitScenes(original.paragraphs),newScenes=splitScenes(revised.paragraphs),pairs=structuralPairs(oldScenes,newScenes,alignScenes);
+  const oldScenes=splitScenes(original.paragraphs,original.formatting),newScenes=splitScenes(revised.paragraphs,revised.formatting),pairs=structuralPairs(oldScenes,newScenes,alignScenes);
   let total=0,removed=0,added=0;
   const scenes=pairs.map(({a:oi,b:ni,...structure},index)=>{
     const a=oi===null?[]:oldScenes[oi].paragraphs,b=ni===null?[]:newScenes[ni].paragraphs;

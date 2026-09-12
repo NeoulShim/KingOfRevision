@@ -1,6 +1,6 @@
 import {compareDocuments as compareV2} from './core/compare-v2.js';
 import {compareDocuments as legacyCompare} from './core/compare-legacy.js';
-import {normalizedFormats,editFormats,editFormat,selectedFormats,splitEditorFormat} from './core/formatting.js';
+import {normalizedFormats,editFormats,editFormat,selectedFormats,splitEditorFormat,withoutPageBreak} from './core/formatting.js';
 import { readDocument, writeDocument, outputFormat, exportFormats } from './core/document.js';
 import { compareDocuments, selectedParagraphs, validateChoices } from './core/compare.js';
 import {editorParagraphs,retainChoices} from './core/editing.js';
@@ -36,7 +36,7 @@ async function handle({id,type,payload}){
         const inserted=editorParagraphs(payload.text),before=documents.revised.paragraphs[n];paragraphs=[...documents.revised.paragraphs];paragraphs.splice(n,1,...inserted);
         if(paragraphs.length>40000||paragraphs.join('\n').length>1000000)throw Error('본문은 100만 자, 4만 문단까지 편집할 수 있습니다.');
         formatting=normalizedFormats(documents.revised.paragraphs,documents.revised.formatting);if(payload.paragraphFormatting&&payload.paragraphFormatting.runs?.map(r=>r.text).join('')!==payload.text)throw Error('문단의 글과 서식이 맞지 않습니다. 다시 편집해 주세요.');
-        formatting.splice(n,1,...(payload.paragraphFormatting?splitEditorFormat(payload.text,payload.paragraphFormatting):inserted.map(p=>editFormat(before,p,documents.revised.formatting?.[n]))));
+        formatting.splice(n,1,...(payload.paragraphFormatting?splitEditorFormat(payload.text,payload.paragraphFormatting):inserted.map((p,i)=>{const f=editFormat(before,p,documents.revised.formatting?.[n]);return i?withoutPageBreak(f):f})));
       }else {paragraphs=editorParagraphs(payload.text);const base=payload.mode==='merged'?selectedParagraphs(current,choices):documents.revised.paragraphs,formats=payload.mode==='merged'?selectedFormats(current,choices,documents):documents.revised.formatting;formatting=editFormats(base,paragraphs,formats);}
 
       const revised={...documents.revised,paragraphs,formatting,characters:paragraphs.join('').length,name:documents.revised.name.replace(/(?:_직접개고)?\.(hwpx?|docx|txt)$/i,'_직접개고.$1')};
