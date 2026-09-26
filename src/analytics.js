@@ -3,8 +3,10 @@ const SITE_TOKEN = '46fad0ec45c24702af8b85af375aa8db';
 
 export function installAnalytics(token, win = window, doc = document) {
   if (!/^[a-f0-9]{32}$/i.test(token)) return false;
-  if (win.location.hostname !== 'neoulshim.github.io' ||
-      !/^\/KingOfRevision(?:\/|$)/.test(win.location.pathname)) return false;
+  const custom = ['neoulshim.kr','www.neoulshim.kr'].includes(win.location.hostname);
+  const github = win.location.hostname === 'neoulshim.github.io' && /^\/KingOfRevision(?:\/|$)/.test(win.location.pathname);
+  if (!github && !(custom && /^\/kingofrevision(?:\/|$)/.test(win.location.pathname))) return false;
+  if (custom) token = '81b9b24929344e8c90393e8775e8f0bf';
   if (doc.getElementById('cloudflare-web-analytics')) return false;
   const script = doc.createElement('script');
   script.id = 'cloudflare-web-analytics';
